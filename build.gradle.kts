@@ -5,6 +5,7 @@ plugins {
     `java-library`
     kotlin("jvm") version "1.3.10"
     `maven-publish`
+    signing
 }
 
 group = "com.digitalpetri.netty"
@@ -55,20 +56,79 @@ tasks {
     }
 }
 
-val sourcesJar by tasks.registering(Jar::class) {
+task<Jar>("sourcesJar") {
+    from(sourceSets.main.get().allJava)
     classifier = "sources"
-    from(sourceSets["main"].allSource)
+}
+
+task<Jar>("javadocJar") {
+    from(tasks.javadoc)
+    classifier = "javadoc"
 }
 
 publishing {
-    repositories {
-        mavenLocal()
+    publications {
+        create<MavenPublication>("mavenJava") {
+            artifactId = "netty-channel-fsm"
+
+            from(components["java"])
+
+            artifact(tasks["sourcesJar"])
+            artifact(tasks["javadocJar"])
+
+            pom {
+                name.set("Netty Channel FSM")
+                description.set("An FSM that manages async non-blocking access to a Netty Channel")
+                url.set("https://github.com/digitalpetri/netty-channel-fsm")
+
+                licenses {
+                    license {
+                        name.set("The Apache License, Version 2.0")
+                        url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("kevinherron")
+                        name.set("Kevin Herron")
+                        email.set("kevinherron@gmail.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com.com/digitalpetri/netty-channel-fsm.git")
+                    developerConnection.set("scm:git:ssh://github.com.com/digitalpetri/netty-channel-fsm.git")
+                    url.set("https://github.com/digitalpetri/netty-channel-fsm")
+                }
+            }
+        }
     }
 
-    publications {
-        register("mavenJava", MavenPublication::class) {
-            from(components["java"])
-            artifact(sourcesJar.get())
+    repositories {
+        maven {
+            credentials {
+                username = project.findProperty("ossrhUsername") as String?
+                password = project.findProperty("ossrhPassword") as String?
+            }
+
+            // change URLs to point to your repos, e.g. http://my.org/repo
+            val releasesRepoUrl = uri("https://oss.sonatype.org/service/local/staging/deploy/maven2/")
+            val snapshotsRepoUrl = uri("https://oss.sonatype.org/content/repositories/snapshots/")
+            url = if (version.toString().endsWith("SNAPSHOT")) snapshotsRepoUrl else releasesRepoUrl
         }
+
+        mavenLocal()
+    }
+}
+
+signing {
+    useGpgCmd()
+    sign(publishing.publications["mavenJava"])
+}
+
+tasks.javadoc {
+    if (JavaVersion.current().isJava9Compatible) {
+        (options as StandardJavadocDocletOptions).addBooleanOption("html5", true)
     }
 }
