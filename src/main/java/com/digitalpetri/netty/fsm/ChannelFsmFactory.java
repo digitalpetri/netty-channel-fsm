@@ -67,10 +67,16 @@ public class ChannelFsmFactory {
     }
 
     private static void configureChannelFsm(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
-        Logger logger = LoggerFactory.getLogger(config.getLoggerName());
+        configureNotConnectedState(fb);
+        configureIdleState(fb);
+        configureConnectingState(fb, config);
+        configureConnectedState(fb, config);
+        configureDisconnectingState(fb, config);
+        configureReconnectWaitState(fb, config);
+        configureReconnectingState(fb, config);
+    }
 
-        // <editor-fold desc="NOT_CONNECTED">
-
+    private static void configureNotConnectedState(FsmBuilder<State, Event> fb) {
         fb.when(State.NotConnected)
             .on(Event.Connect.class)
             .transitionTo(State.Connecting);
@@ -88,11 +94,9 @@ public class ChannelFsmFactory {
                 Event.GetChannel getChannelEvent = (Event.GetChannel) ctx.event();
                 getChannelEvent.channelFuture.completeExceptionally(new Exception("not connected"));
             });
+    }
 
-        // </editor-fold>
-
-        // <editor-fold desc="IDLE">
-
+    private static void configureIdleState(FsmBuilder<State, Event> fb) {
         fb.when(State.Idle)
             .on(Event.Connect.class)
             .transitionTo(State.Connecting);
@@ -112,12 +116,9 @@ public class ChannelFsmFactory {
                 Event.Disconnect disconnect = (Event.Disconnect) ctx.event();
                 disconnect.disconnectFuture.complete(null);
             });
+    }
 
-
-        // </editor-fold>
-
-        // <editor-fold desc="CONNECTING">
-
+    private static void configureConnectingState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
         if (config.isPersistent()) {
             if (config.isLazy()) {
                 fb.when(State.Connecting)
@@ -177,10 +178,10 @@ public class ChannelFsmFactory {
             .to(s -> s != State.Connecting)
             .via(Event.ConnectFailure.class)
             .execute(ChannelFsmFactory::handleConnectFailureEvent);
+    }
 
-        // </editor-fold>
-
-        // <editor-fold desc="CONNECTED">
+    private static void configureConnectedState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
+        Logger logger = LoggerFactory.getLogger(config.getLoggerName());
 
         fb.when(State.Connected)
             .on(Event.Disconnect.class)
@@ -299,12 +300,9 @@ public class ChannelFsmFactory {
 
                 cf.future.thenAccept(Channel::close);
             });
+    }
 
-
-        // </editor-fold>
-
-        // <editor-fold desc="DISCONNECTING">
-
+    private static void configureDisconnectingState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
         fb.when(State.Disconnecting)
             .on(Event.DisconnectSuccess.class)
             .transitionTo(State.NotConnected);
@@ -354,11 +352,9 @@ public class ChannelFsmFactory {
             .to(s -> s != State.Disconnecting)
             .viaAny()
             .execute(FsmContext::processShelvedEvents);
+    }
 
-        // </editor-fold>
-
-        // <editor-fold desc="RECONNECT_WAIT">
-
+    private static void configureReconnectWaitState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
         fb.when(State.ReconnectWait)
             .on(Event.ReconnectDelayElapsed.class)
             .transitionTo(State.Reconnecting);
@@ -427,11 +423,9 @@ public class ChannelFsmFactory {
                 Event.Disconnect disconnect = (Event.Disconnect) ctx.event();
                 disconnect.disconnectFuture.complete(null);
             });
+    }
 
-        // </editor-fold>
-
-        // <editor-fold desc="RECONNECTING">
-
+    private static void configureReconnectingState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
         fb.when(State.Reconnecting)
             .on(Event.ConnectFailure.class)
             .transitionTo(State.ReconnectWait);
@@ -469,8 +463,6 @@ public class ChannelFsmFactory {
                 KEY_RD.remove(ctx);
                 KEY_RDF.remove(ctx);
             });
-
-        // </editor-fold>
     }
 
     private static void connect(
