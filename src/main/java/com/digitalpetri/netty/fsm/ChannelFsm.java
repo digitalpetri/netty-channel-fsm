@@ -26,8 +26,6 @@ import com.digitalpetri.strictmachine.Fsm;
 import com.digitalpetri.strictmachine.FsmContext;
 import io.netty.channel.Channel;
 
-import static com.digitalpetri.netty.fsm.util.CompletionBuilders.complete;
-
 public class ChannelFsm {
 
     private final Fsm<State, Event> fsm;
@@ -52,10 +50,7 @@ public class ChannelFsm {
 
         fsm.fireEvent(connect);
 
-        CompletableFuture<Channel> future = new CompletableFuture<>();
-
-        return complete(future)
-            .with(connect.channelFuture);
+        return connect.channelFuture;
     }
 
     /**
@@ -69,8 +64,7 @@ public class ChannelFsm {
 
         fsm.fireEvent(disconnect);
 
-        return complete(new CompletableFuture<Void>())
-            .with(disconnect.disconnectFuture);
+        return disconnect.disconnectFuture;
     }
 
     /**
@@ -109,8 +103,7 @@ public class ChannelFsm {
 
             fsm.fireEvent(getChannel);
 
-            return complete(new CompletableFuture<Channel>())
-                .with(getChannel.channelFuture);
+            return getChannel.channelFuture;
         }
     }
 
