@@ -35,6 +35,8 @@ public class ChannelFsmConfigBuilder {
     private String loggerName;
 
     /**
+     * @param lazy {@code true} if the ChannelFsm should be lazy,
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#isLazy()
      */
     public ChannelFsmConfigBuilder setLazy(boolean lazy) {
@@ -43,6 +45,8 @@ public class ChannelFsmConfigBuilder {
     }
 
     /**
+     * @param persistent {@code true} if the ChannelFsm should be persistent in its initial connect attempt.
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#isPersistent()
      */
     public ChannelFsmConfigBuilder setPersistent(boolean persistent) {
@@ -51,6 +55,8 @@ public class ChannelFsmConfigBuilder {
     }
 
     /**
+     * @param maxIdleSeconds the maximum amount of time, in seconds, before a keep alive occurs on an idle channel.
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#getMaxIdleSeconds()
      */
     public ChannelFsmConfigBuilder setMaxIdleSeconds(int maxIdleSeconds) {
@@ -59,6 +65,8 @@ public class ChannelFsmConfigBuilder {
     }
 
     /**
+     * @param maxReconnectDelaySeconds the maximum delay to occur between reconnect attempts.
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#getMaxReconnectDelaySeconds()
      */
     public ChannelFsmConfigBuilder setMaxReconnectDelaySeconds(int maxReconnectDelaySeconds) {
@@ -67,6 +75,8 @@ public class ChannelFsmConfigBuilder {
     }
 
     /**
+     * @param channelActions the {@link ChannelActions} delegate.
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#getChannelActions()
      */
     public ChannelFsmConfigBuilder setChannelActions(ChannelActions channelActions) {
@@ -75,6 +85,8 @@ public class ChannelFsmConfigBuilder {
     }
 
     /**
+     * @param executor the {@link Executor} to use.
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#getExecutor()
      */
     public ChannelFsmConfigBuilder setExecutor(Executor executor) {
@@ -83,6 +95,8 @@ public class ChannelFsmConfigBuilder {
     }
 
     /**
+     * @param scheduler the {@link Scheduler} to use.
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#getScheduler()
      */
     public ChannelFsmConfigBuilder setScheduler(Scheduler scheduler) {
@@ -91,6 +105,8 @@ public class ChannelFsmConfigBuilder {
     }
 
     /**
+     * @param scheduledExecutor the {@link ScheduledExecutorService} to use.
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#getScheduler()
      */
     public ChannelFsmConfigBuilder setScheduler(ScheduledExecutorService scheduledExecutor) {
@@ -99,6 +115,8 @@ public class ChannelFsmConfigBuilder {
     }
 
     /**
+     * @param loggerName the logger name the FSM should use.
+     * @return this {@link ChannelFsmConfigBuilder}.
      * @see ChannelFsmConfig#getLoggerName()
      */
     public ChannelFsmConfigBuilder setLoggerName(String loggerName) {

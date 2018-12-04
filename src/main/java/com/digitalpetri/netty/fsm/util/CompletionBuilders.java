@@ -26,6 +26,7 @@ public class CompletionBuilders {
      * {@link CompletionBuilder}.
      *
      * @param future the future to complete.
+     * @param <T>    the type returned by {@code future}.
      * @return a {@link CompletionBuilder}.
      */
     public static <T> CompletionBuilder<T> complete(CompletableFuture<T> future) {
@@ -38,6 +39,7 @@ public class CompletionBuilders {
      *
      * @param future   the future to complete.
      * @param executor the {@link Executor} to use.
+     * @param <T>      the type returned by {@code future}.
      * @return a {@link CompletionBuilder}.
      */
     public static <T> CompletionBuilder<T> completeAsync(CompletableFuture<T> future, Executor executor) {

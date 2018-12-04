@@ -28,7 +28,7 @@ public interface Scheduler {
      * @param command the commadn to run.
      * @param delay   the time to delay.
      * @param unit    the time unit of the delay.
-     * @return
+     * @return a {@link Cancellable} that can be used to attempt cancellation if needed.
      */
     Cancellable schedule(Runnable command, long delay, TimeUnit unit);
 
