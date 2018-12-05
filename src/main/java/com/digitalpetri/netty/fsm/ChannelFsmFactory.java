@@ -49,6 +49,11 @@ public class ChannelFsmFactory {
         this.config = config;
     }
 
+    /**
+     * Create a new {@link ChannelFsm} instance.
+     *
+     * @return a new {@link ChannelFsm} instance.
+     */
     public ChannelFsm newChannelFsm() {
         return newChannelFsm(State.NotConnected);
     }
@@ -64,6 +69,16 @@ public class ChannelFsmFactory {
         Fsm<State, Event> fsm = builder.build(initialState);
 
         return new ChannelFsm(fsm);
+    }
+
+    /**
+     * Create a new {@link ChannelFsm} instance from {@code config}.
+     *
+     * @param config a {@link ChannelFsmConfig}.
+     * @return a new {@link ChannelFsm} from {@code config}.
+     */
+    public static ChannelFsm newChannelFsm(ChannelFsmConfig config) {
+        return new ChannelFsmFactory(config).newChannelFsm();
     }
 
     private static void configureChannelFsm(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
