@@ -114,11 +114,11 @@ public class ChannelFsmFactory {
     private static void configureIdleState(FsmBuilder<State, Event> fb) {
         fb.when(State.Idle)
             .on(Event.Connect.class)
-            .transitionTo(State.Connecting);
+            .transitionTo(State.Reconnecting);
 
         fb.when(State.Idle)
             .on(Event.GetChannel.class)
-            .transitionTo(State.Connecting);
+            .transitionTo(State.Reconnecting);
 
         fb.when(State.Idle)
             .on(Event.Disconnect.class)
@@ -156,18 +156,12 @@ public class ChannelFsmFactory {
 
         fb.onTransitionTo(State.Connecting)
             .from(s -> s != State.Connecting)
-            .via(e -> e.getClass() == Event.Connect.class || e.getClass() == Event.GetChannel.class)
+            .via(e -> e.getClass() == Event.Connect.class)
             .execute(ctx -> {
                 ConnectFuture cf = new ConnectFuture();
                 KEY_CF.set(ctx, cf);
 
-                Event event = ctx.event();
-
-                if (event instanceof Event.Connect) {
-                    handleConnectEvent(ctx);
-                } else if (event instanceof Event.GetChannel) {
-                    handleGetChannelEvent(ctx);
-                }
+                handleConnectEvent(ctx);
 
                 connect(config.getChannelActions(), ctx);
             });
@@ -453,6 +447,24 @@ public class ChannelFsmFactory {
             .from(State.ReconnectWait)
             .via(Event.ReconnectDelayElapsed.class)
             .execute(ctx -> connect(config.getChannelActions(), ctx));
+
+        fb.onTransitionTo(State.Reconnecting)
+            .from(State.Idle)
+            .via(e -> e.getClass() == Event.Connect.class || e.getClass() == Event.GetChannel.class)
+            .execute(ctx -> {
+                ConnectFuture cf = new ConnectFuture();
+                KEY_CF.set(ctx, cf);
+
+                Event event = ctx.event();
+
+                if (event instanceof Event.Connect) {
+                    handleConnectEvent(ctx);
+                } else if (event instanceof Event.GetChannel) {
+                    handleGetChannelEvent(ctx);
+                }
+
+                connect(config.getChannelActions(), ctx);
+            });
 
         fb.onInternalTransition(State.Reconnecting)
             .via(Event.Connect.class)

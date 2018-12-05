@@ -23,22 +23,22 @@ import org.junit.jupiter.api.Test
 class IdleTransitions {
 
     @Test
-    fun `S(IDLE) x E(Connect) = S'(CONNECTING)`() {
+    fun `S(IDLE) x E(Connect) = S'(RECONNECTING)`() {
         val fsm = factory().newChannelFsm(State.Idle)
         val event = Event.Connect()
 
-        assertEquals(State.Connecting, fsm.fsm.fireEventBlocking(event)) {
-            "expected State.CONNECTING"
+        assertEquals(State.Reconnecting, fsm.fsm.fireEventBlocking(event)) {
+            "expected State.Reconnecting"
         }
     }
 
     @Test
-    fun `S(IDLE) x E(GetChannel) = S'(CONNECTING)`() {
+    fun `S(IDLE) x E(GetChannel) = S'(RECONNECTING)`() {
         val fsm = factory().newChannelFsm(State.Idle)
         val event = Event.GetChannel()
 
-        assertEquals(State.Connecting, fsm.fsm.fireEventBlocking(event)) {
-            "expected State.CONNECTING"
+        assertEquals(State.Reconnecting, fsm.fsm.fireEventBlocking(event)) {
+            "expected State.Reconnecting"
         }
     }
 

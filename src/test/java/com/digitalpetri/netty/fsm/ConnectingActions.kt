@@ -49,26 +49,6 @@ class ConnectingActions {
     }
 
     @Test
-    fun `External transition to CONNECTING via GetChannel`() {
-        val connectDelegate = TestConnectProxy()
-
-        val fsm = factory(connectProxy = connectDelegate)
-            .newChannelFsm(State.Idle)
-
-        val event = Event.GetChannel()
-
-        assertEquals(State.Connecting, fsm.fsm.fireEventBlocking(event))
-
-        assertNotNull(fsm.fsm.getFromContext { ctx -> KEY_CF.get(ctx) })
-
-        connectDelegate.success()
-
-        assertWithTimeout {
-            assertNotNull(event.channelFuture.get())
-        }
-    }
-
-    @Test
     fun `Internal transition via Connect`() {
         val connectDelegate = TestConnectProxy()
 
