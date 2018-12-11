@@ -9,14 +9,14 @@ plugins {
 }
 
 group = "com.digitalpetri.netty"
-version = "0.1-SNAPSHOT"
+version = "0.2"
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    compile("com.digitalpetri.fsm:strict-machine:0.1-SNAPSHOT")
+    compile("com.digitalpetri.fsm:strict-machine:0.1")
 
     // BYO SLF4J
     compileOnly("org.slf4j:slf4j-api:1.7.+")
