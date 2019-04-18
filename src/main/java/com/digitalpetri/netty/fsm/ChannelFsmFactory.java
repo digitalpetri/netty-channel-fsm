@@ -39,7 +39,7 @@ import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_CF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_DF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RD;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RDF;
-import static com.digitalpetri.netty.fsm.util.CompletionBuilders.complete;
+import static com.digitalpetri.netty.fsm.util.CompletionBuilders.completeAsync;
 
 public class ChannelFsmFactory {
 
@@ -82,8 +82,8 @@ public class ChannelFsmFactory {
     }
 
     private static void configureChannelFsm(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
-        configureNotConnectedState(fb);
-        configureIdleState(fb);
+        configureNotConnectedState(fb, config);
+        configureIdleState(fb, config);
         configureConnectingState(fb, config);
         configureConnectedState(fb, config);
         configureDisconnectingState(fb, config);
@@ -91,7 +91,7 @@ public class ChannelFsmFactory {
         configureReconnectingState(fb, config);
     }
 
-    private static void configureNotConnectedState(FsmBuilder<State, Event> fb) {
+    private static void configureNotConnectedState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
         fb.when(State.NotConnected)
             .on(Event.Connect.class)
             .transitionTo(State.Connecting);
@@ -100,18 +100,25 @@ public class ChannelFsmFactory {
             .via(Event.Disconnect.class)
             .execute(ctx -> {
                 Event.Disconnect disconnectEvent = (Event.Disconnect) ctx.event();
-                disconnectEvent.disconnectFuture.complete(null);
+
+                config.getExecutor().execute(() ->
+                    disconnectEvent.disconnectFuture.complete(null)
+                );
             });
 
         fb.onInternalTransition(State.NotConnected)
             .via(Event.GetChannel.class)
             .execute(ctx -> {
                 Event.GetChannel getChannelEvent = (Event.GetChannel) ctx.event();
-                getChannelEvent.channelFuture.completeExceptionally(new Exception("not connected"));
+
+                config.getExecutor().execute(() ->
+                    getChannelEvent.channelFuture
+                        .completeExceptionally(new Exception("not connected"))
+                );
             });
     }
 
-    private static void configureIdleState(FsmBuilder<State, Event> fb) {
+    private static void configureIdleState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
         fb.when(State.Idle)
             .on(Event.Connect.class)
             .transitionTo(State.Reconnecting);
@@ -129,7 +136,9 @@ public class ChannelFsmFactory {
             .via(Event.Disconnect.class)
             .execute(ctx -> {
                 Event.Disconnect disconnect = (Event.Disconnect) ctx.event();
-                disconnect.disconnectFuture.complete(null);
+                config.getExecutor().execute(() ->
+                    disconnect.disconnectFuture.complete(null)
+                );
             });
     }
 
@@ -161,18 +170,18 @@ public class ChannelFsmFactory {
                 ConnectFuture cf = new ConnectFuture();
                 KEY_CF.set(ctx, cf);
 
-                handleConnectEvent(ctx);
+                handleConnectEvent(ctx, config);
 
-                connect(config.getChannelActions(), ctx);
+                connect(ctx, config);
             });
 
         fb.onInternalTransition(State.Connecting)
             .via(Event.Connect.class)
-            .execute(ChannelFsmFactory::handleConnectEvent);
+            .execute(ctx -> handleConnectEvent(ctx, config));
 
         fb.onInternalTransition(State.Connecting)
             .via(Event.GetChannel.class)
-            .execute(ChannelFsmFactory::handleGetChannelEvent);
+            .execute(ctx -> handleGetChannelEvent(ctx, config));
 
         fb.onInternalTransition(State.Connecting)
             .via(Event.Disconnect.class)
@@ -186,7 +195,7 @@ public class ChannelFsmFactory {
         fb.onTransitionFrom(State.Connecting)
             .to(s -> s != State.Connecting)
             .via(Event.ConnectFailure.class)
-            .execute(ChannelFsmFactory::handleConnectFailureEvent);
+            .execute(ctx -> handleConnectFailureEvent(ctx, config));
     }
 
     private static void configureConnectedState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
@@ -272,24 +281,25 @@ public class ChannelFsmFactory {
                     }
                 });
 
+
                 ConnectFuture cf = KEY_CF.get(ctx);
-                cf.future.complete(channel);
+                config.getExecutor().execute(() -> cf.future.complete(channel));
             });
 
         fb.onInternalTransition(State.Connected)
             .via(Event.Connect.class)
-            .execute(ChannelFsmFactory::handleConnectEvent);
+            .execute(ctx -> handleConnectEvent(ctx, config));
 
         fb.onInternalTransition(State.Connected)
             .via(Event.GetChannel.class)
-            .execute(ChannelFsmFactory::handleGetChannelEvent);
+            .execute(ctx -> handleGetChannelEvent(ctx, config));
 
         fb.onInternalTransition(State.Connected)
             .via(Event.ChannelIdle.class)
             .execute(ctx -> {
                 ConnectFuture cf = KEY_CF.get(ctx);
 
-                cf.future.thenAccept(ch -> {
+                cf.future.thenAcceptAsync(ch -> {
                     CompletableFuture<Void> keepAliveFuture =
                         config.getChannelActions().keepAlive(ctx, ch);
 
@@ -298,7 +308,7 @@ public class ChannelFsmFactory {
                             ctx.fireEvent(new Event.KeepAliveFailure(ex));
                         }
                     });
-                });
+                }, config.getExecutor());
             });
 
         fb.onTransitionFrom(State.Connected)
@@ -325,9 +335,9 @@ public class ChannelFsmFactory {
 
                 Event.Disconnect event = (Event.Disconnect) ctx.event();
 
-                complete(event.disconnectFuture).with(df.future);
+                completeAsync(event.disconnectFuture, config.getExecutor()).with(df.future);
 
-                disconnect(config.getChannelActions(), ctx);
+                disconnect(ctx, config);
             });
 
         fb.onInternalTransition(State.Disconnecting)
@@ -342,7 +352,7 @@ public class ChannelFsmFactory {
                 if (df != null) {
                     Event.Disconnect event = (Event.Disconnect) ctx.event();
 
-                    complete(event.disconnectFuture).with(df.future);
+                    completeAsync(event.disconnectFuture, config.getExecutor()).with(df.future);
                 }
             });
 
@@ -353,7 +363,7 @@ public class ChannelFsmFactory {
                 DisconnectFuture df = KEY_DF.remove(ctx);
 
                 if (df != null) {
-                    df.future.complete(null);
+                    config.getExecutor().execute(() -> df.future.complete(null));
                 }
             });
 
@@ -377,7 +387,7 @@ public class ChannelFsmFactory {
         fb.onTransitionTo(State.ReconnectWait)
             .from(State.Reconnecting)
             .via(Event.ConnectFailure.class)
-            .execute(ChannelFsmFactory::handleConnectFailureEvent);
+            .execute(ctx -> handleConnectFailureEvent(ctx, config));
 
         fb.onTransitionTo(State.ReconnectWait)
             .from(s -> s != State.ReconnectWait)
@@ -405,11 +415,11 @@ public class ChannelFsmFactory {
 
         fb.onInternalTransition(State.ReconnectWait)
             .via(Event.Connect.class)
-            .execute(ChannelFsmFactory::handleConnectEvent);
+            .execute(ctx -> handleConnectEvent(ctx, config));
 
         fb.onInternalTransition(State.ReconnectWait)
             .via(Event.GetChannel.class)
-            .execute(ChannelFsmFactory::handleGetChannelEvent);
+            .execute(ctx -> handleGetChannelEvent(ctx, config));
 
         fb.onTransitionFrom(State.ReconnectWait)
             .to(State.NotConnected)
@@ -417,8 +427,9 @@ public class ChannelFsmFactory {
             .execute(ctx -> {
                 ConnectFuture connectFuture = KEY_CF.remove(ctx);
                 if (connectFuture != null) {
-                    connectFuture.future.completeExceptionally(
-                        new Exception("client disconnected")
+                    config.getExecutor().execute(() ->
+                        connectFuture.future
+                            .completeExceptionally(new Exception("client disconnected"))
                     );
                 }
 
@@ -430,7 +441,9 @@ public class ChannelFsmFactory {
                 }
 
                 Event.Disconnect disconnect = (Event.Disconnect) ctx.event();
-                disconnect.disconnectFuture.complete(null);
+                config.getExecutor().execute(() ->
+                    disconnect.disconnectFuture.complete(null)
+                );
             });
     }
 
@@ -446,7 +459,7 @@ public class ChannelFsmFactory {
         fb.onTransitionTo(State.Reconnecting)
             .from(State.ReconnectWait)
             .via(Event.ReconnectDelayElapsed.class)
-            .execute(ctx -> connect(config.getChannelActions(), ctx));
+            .execute(ctx -> connect(ctx, config));
 
         fb.onTransitionTo(State.Reconnecting)
             .from(State.Idle)
@@ -458,21 +471,21 @@ public class ChannelFsmFactory {
                 Event event = ctx.event();
 
                 if (event instanceof Event.Connect) {
-                    handleConnectEvent(ctx);
+                    handleConnectEvent(ctx, config);
                 } else if (event instanceof Event.GetChannel) {
-                    handleGetChannelEvent(ctx);
+                    handleGetChannelEvent(ctx, config);
                 }
 
-                connect(config.getChannelActions(), ctx);
+                connect(ctx, config);
             });
 
         fb.onInternalTransition(State.Reconnecting)
             .via(Event.Connect.class)
-            .execute(ChannelFsmFactory::handleConnectEvent);
+            .execute(ctx -> handleConnectEvent(ctx, config));
 
         fb.onInternalTransition(State.Reconnecting)
             .via(Event.GetChannel.class)
-            .execute(ChannelFsmFactory::handleGetChannelEvent);
+            .execute(ctx -> handleGetChannelEvent(ctx, config));
 
         fb.onInternalTransition(State.Reconnecting)
             .via(Event.Disconnect.class)
@@ -493,56 +506,65 @@ public class ChannelFsmFactory {
     }
 
     private static void connect(
-        ChannelActions channelActions,
-        ActionContext<State, Event> ctx) {
+        ActionContext<State, Event> ctx,
+        ChannelFsmConfig config
+    ) {
 
-        channelActions.connect(ctx).whenComplete((channel, ex) -> {
-            if (channel != null) {
-                ctx.fireEvent(new Event.ConnectSuccess(channel));
-            } else {
-                ctx.fireEvent(new Event.ConnectFailure(ex));
-            }
-        });
+        config.getExecutor().execute(() ->
+            config.getChannelActions().connect(ctx).whenComplete((channel, ex) -> {
+                if (channel != null) {
+                    ctx.fireEvent(new Event.ConnectSuccess(channel));
+                } else {
+                    ctx.fireEvent(new Event.ConnectFailure(ex));
+                }
+            })
+        );
     }
 
     private static void disconnect(
-        ChannelActions channelActions,
-        ActionContext<State, Event> ctx) {
+        ActionContext<State, Event> ctx,
+        ChannelFsmConfig config
+    ) {
 
         ConnectFuture connectFuture = KEY_CF.get(ctx);
 
         if (connectFuture != null && connectFuture.future.isDone()) {
-            CompletableFuture<Void> disconnectFuture = channelActions.disconnect(
-                ctx,
-                connectFuture.future.getNow(null)
-            );
+            config.getExecutor().execute(() -> {
+                CompletableFuture<Void> disconnectFuture = config.getChannelActions().disconnect(
+                    ctx,
+                    connectFuture.future.getNow(null)
+                );
 
-            disconnectFuture.whenComplete((v, ex) -> ctx.fireEvent(new Event.DisconnectSuccess()));
+                disconnectFuture.whenComplete((v, ex) -> ctx.fireEvent(new Event.DisconnectSuccess()));
+            });
         } else {
             ctx.fireEvent(new Event.DisconnectSuccess());
         }
     }
 
-    private static void handleConnectEvent(ActionContext<State, Event> ctx) {
+    private static void handleConnectEvent(ActionContext<State, Event> ctx, ChannelFsmConfig config) {
         CompletableFuture<Channel> channelFuture = KEY_CF.get(ctx).future;
 
         Event.Connect connectEvent = (Event.Connect) ctx.event();
-        complete(connectEvent.channelFuture).with(channelFuture);
+        completeAsync(connectEvent.channelFuture, config.getExecutor()).with(channelFuture);
     }
 
-    private static void handleGetChannelEvent(ActionContext<State, Event> ctx) {
+    private static void handleGetChannelEvent(ActionContext<State, Event> ctx, ChannelFsmConfig config) {
         CompletableFuture<Channel> channelFuture = KEY_CF.get(ctx).future;
 
         Event.GetChannel getChannelEvent = (Event.GetChannel) ctx.event();
-        complete(getChannelEvent.channelFuture).with(channelFuture);
+        completeAsync(getChannelEvent.channelFuture, config.getExecutor()).with(channelFuture);
     }
 
-    private static void handleConnectFailureEvent(ActionContext<State, Event> ctx) {
+    private static void handleConnectFailureEvent(ActionContext<State, Event> ctx, ChannelFsmConfig config) {
         ConnectFuture cf = KEY_CF.remove(ctx);
 
         if (cf != null) {
             Event.ConnectFailure connectFailureEvent = (Event.ConnectFailure) ctx.event();
-            cf.future.completeExceptionally(connectFailureEvent.failure);
+
+            config.getExecutor().execute(() ->
+                cf.future.completeExceptionally(connectFailureEvent.failure)
+            );
         }
     }
 

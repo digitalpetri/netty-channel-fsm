@@ -35,15 +35,15 @@ class ReconnectWaitActions {
 
         fsm.fsm.fireEventBlocking(Event.Connect())
         connectDelegate.success()
-
         assertEventualState(fsm, State.Connected)
+        connectDelegate.reset()
 
         fsm.fsm.fireEvent(Event.ChannelInactive())
 
         assertEventualState(fsm, State.Reconnecting)
 
         val getChannel = Event.GetChannel()
-        Assertions.assertEquals(State.Reconnecting, fsm.fsm.fireEventBlocking(getChannel))
+        assertEquals(State.Reconnecting, fsm.fsm.fireEventBlocking(getChannel))
 
         connectDelegate.failure()
 
@@ -124,6 +124,7 @@ class ReconnectWaitActions {
         connectDelegate.success()
 
         assertEventualState(fsm, State.Connected)
+        connectDelegate.reset()
 
         fsm.fsm.fireEvent(Event.ChannelInactive())
 
@@ -134,6 +135,7 @@ class ReconnectWaitActions {
             assertEventualState(fsm, State.Reconnecting)
             connectDelegate.failure()
             assertEventualState(fsm, State.ReconnectWait)
+            connectDelegate.reset()
 
             fsm.fsm.getFromContext { ctx ->
                 assertEquals(expectedDelay, KEY_RD.get(ctx))
@@ -157,6 +159,8 @@ class ReconnectWaitActions {
 
         assertEventualState(fsm, State.Connected)
 
+        connectDelegate.reset()
+
         fsm.fsm.fireEvent(Event.ChannelInactive())
 
         assertEventualState(fsm, State.ReconnectWait)
@@ -170,6 +174,7 @@ class ReconnectWaitActions {
             assertEventualState(fsm, State.Reconnecting)
             connectDelegate.failure()
             assertEventualState(fsm, State.ReconnectWait)
+            connectDelegate.reset()
 
             assertThrows<ExecutionException> {
                 connect.channelFuture.get()
@@ -184,6 +189,7 @@ class ReconnectWaitActions {
             assertEventualState(fsm, State.Reconnecting)
             connectDelegate.success()
             assertEventualState(fsm, State.Connected)
+            connectDelegate.reset()
 
             assertWithTimeout {
                 assertNotNull(connect.channelFuture.get())
@@ -204,8 +210,8 @@ class ReconnectWaitActions {
 
         fsm.fsm.fireEventBlocking(Event.Connect())
         connectDelegate.success()
-
         assertEventualState(fsm, State.Connected)
+        connectDelegate.reset()
 
         fsm.fsm.fireEvent(Event.ChannelInactive())
 
@@ -220,6 +226,7 @@ class ReconnectWaitActions {
             assertEventualState(fsm, State.Reconnecting)
             connectDelegate.failure()
             assertEventualState(fsm, State.ReconnectWait)
+            connectDelegate.reset()
 
             assertThrows<ExecutionException> {
                 getChannel.channelFuture.get()
@@ -234,6 +241,7 @@ class ReconnectWaitActions {
             assertEventualState(fsm, State.Reconnecting)
             connectDelegate.success()
             assertEventualState(fsm, State.Connected)
+            connectDelegate.reset()
 
             assertWithTimeout {
                 assertNotNull(getChannel.channelFuture.get())
