@@ -1,4 +1,3 @@
-import org.gradle.kotlin.dsl.support.KotlinPluginsBlock
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -9,7 +8,7 @@ plugins {
 }
 
 group = "com.digitalpetri.netty"
-version = "0.3-SNAPSHOT"
+version = "0.3"
 
 repositories {
     mavenCentral()
