@@ -19,6 +19,8 @@ package com.digitalpetri.netty.fsm
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import java.util.concurrent.ExecutionException
 
 
 class NotConnectedActions {
@@ -31,7 +33,7 @@ class NotConnectedActions {
 
         assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(event))
 
-        assertTrue(event.disconnectFuture.isDone && !event.disconnectFuture.isCompletedExceptionally)
+        assertWithTimeout { event.disconnectFuture.get() }
     }
 
     @Test
@@ -41,8 +43,8 @@ class NotConnectedActions {
         val event = Event.GetChannel()
 
         assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(event))
-        
-        assertTrue(event.channelFuture.isCompletedExceptionally)
+
+        assertThrows<ExecutionException> { event.channelFuture.get() }
     }
 
 }

@@ -32,8 +32,8 @@ class ReconnectingActions {
             .newChannelFsm(State.NotConnected)
 
         fsm.fsm.fireEventBlocking(Event.Connect())
+        assertEventualState(fsm, State.Connecting)
         connectDelegate.success()
-
         assertEventualState(fsm, State.Connected)
 
         assertEquals(State.ReconnectWait, fsm.fsm.fireEventBlocking(Event.ChannelInactive()))
@@ -53,8 +53,8 @@ class ReconnectingActions {
             .newChannelFsm(State.NotConnected)
 
         fsm.fsm.fireEventBlocking(Event.Connect())
+        assertEventualState(fsm, State.Connecting)
         connectDelegate.success()
-
         assertEventualState(fsm, State.Connected)
 
         fsm.fsm.fireEvent(Event.ChannelInactive())
@@ -78,8 +78,8 @@ class ReconnectingActions {
             .newChannelFsm(State.NotConnected)
 
         fsm.fsm.fireEventBlocking(Event.Connect())
+        assertEventualState(fsm, State.Connecting)
         connectDelegate.success()
-
         assertEventualState(fsm, State.Connected)
 
         fsm.fsm.fireEvent(Event.ChannelInactive())
@@ -136,8 +136,8 @@ class ReconnectingActions {
             .newChannelFsm(State.NotConnected)
 
         fsm.fsm.fireEventBlocking(Event.Connect())
+        assertEventualState(fsm, State.Connecting)
         connectDelegate.success()
-
         assertEventualState(fsm, State.Connected)
 
         fsm.fsm.fireEvent(Event.ChannelInactive())

@@ -64,7 +64,11 @@ class DisconnectingActions {
         )
 
         val fsm: ChannelFsm = factory.newChannelFsm(State.NotConnected)
-        fsm.fsm.fireEventBlocking(Event.Connect())
+
+        Event.Connect().apply {
+            fsm.fsm.fireEventBlocking(this)
+            assertWithTimeout { this.channelFuture.get() }
+        }
 
         val disconnect = Event.Disconnect()
         assertEquals(State.Disconnecting, fsm.fsm.fireEventBlocking(disconnect))
@@ -92,7 +96,11 @@ class DisconnectingActions {
         )
 
         val fsm: ChannelFsm = factory.newChannelFsm(State.NotConnected)
-        fsm.fsm.fireEventBlocking(Event.Connect())
+
+        Event.Connect().apply {
+            fsm.fsm.fireEventBlocking(this)
+            assertWithTimeout { this.channelFuture.get() }
+        }
 
         val disconnect = Event.Disconnect()
         assertEquals(State.Disconnecting, fsm.fsm.fireEventBlocking(disconnect))
@@ -120,7 +128,11 @@ class DisconnectingActions {
         )
 
         val fsm: ChannelFsm = factory.newChannelFsm(State.NotConnected)
-        fsm.fsm.fireEventBlocking(Event.Connect())
+
+        Event.Connect().apply {
+            fsm.fsm.fireEventBlocking(this)
+            assertWithTimeout { this.channelFuture.get() }
+        }
 
         val disconnect = Event.Disconnect()
         assertEquals(State.Disconnecting, fsm.fsm.fireEventBlocking(disconnect))
@@ -152,7 +164,9 @@ class DisconnectingActions {
     ) {
         val connect = Event.Connect()
         fsm.fsm.fireEventBlocking(connect)
+        assertEventualState(fsm, State.Connecting)
         connectDelegate.success()
+        assertEventualState(fsm, State.Connected)
         assertWithTimeout {
             assertNotNull(connect.channelFuture.get())
         }
