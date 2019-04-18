@@ -91,7 +91,7 @@ fun factory(
 fun connectDelegate(success: Boolean) = object : ConnectProxy {
     override fun connect(ctx: FsmContext<State, Event>): CompletableFuture<Channel> {
         return if (success) {
-            CompletableFuture.completedFuture(EmbeddedChannel())
+            completedFuture(EmbeddedChannel())
         } else {
             CompletableFuture<Channel>().apply {
                 completeExceptionally(Exception("failed"))
@@ -103,7 +103,7 @@ fun connectDelegate(success: Boolean) = object : ConnectProxy {
 fun disconnectDelegate(success: Boolean) = object : DisconnectProxy {
     override fun disconnect(ctx: FsmContext<State, Event>, channel: Channel): CompletableFuture<Void> {
         return if (success) {
-            CompletableFuture.completedFuture(null)
+            completedFuture(null)
         } else {
             CompletableFuture<Void>().apply {
                 completeExceptionally(Exception("failed"))
@@ -115,17 +115,19 @@ fun disconnectDelegate(success: Boolean) = object : DisconnectProxy {
 class TestConnectProxy : ConnectProxy {
     private var future = CompletableFuture<Channel>()
 
-    override fun connect(ctx: FsmContext<State, Event>): CompletableFuture<Channel> {
+    override fun connect(ctx: FsmContext<State, Event>): CompletableFuture<Channel> = synchronized(this) {
         return future
     }
 
-    fun success() {
+    fun success() = synchronized(this) {
         future.complete(EmbeddedChannel())
-        future = CompletableFuture()
     }
 
-    fun failure() {
+    fun failure() = synchronized(this) {
         future.completeExceptionally(Exception("failed"))
+    }
+
+    fun reset() = synchronized(this) {
         future = CompletableFuture()
     }
 }
@@ -133,17 +135,20 @@ class TestConnectProxy : ConnectProxy {
 class TestDisconnectProxy : DisconnectProxy {
     private var future = CompletableFuture<Void>()
 
-    override fun disconnect(ctx: FsmContext<State, Event>, channel: Channel): CompletableFuture<Void> {
-        return future
-    }
+    override fun disconnect(ctx: FsmContext<State, Event>, channel: Channel): CompletableFuture<Void> =
+        synchronized(this) {
+            return future
+        }
 
-    fun success() {
+    fun success() = synchronized(this) {
         future.complete(null)
-        future = CompletableFuture()
     }
 
-    fun failure() {
+    fun failure() = synchronized(this) {
         future.completeExceptionally(Exception("failed"))
+    }
+
+    fun reset() = synchronized(this) {
         future = CompletableFuture()
     }
 }

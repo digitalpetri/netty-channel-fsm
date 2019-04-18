@@ -164,9 +164,9 @@ class DisconnectingActions {
     ) {
         val connect = Event.Connect()
         fsm.fsm.fireEventBlocking(connect)
-        assertEventualState(fsm, State.Connecting)
         connectDelegate.success()
         assertEventualState(fsm, State.Connected)
+        connectDelegate.reset()
         assertWithTimeout {
             assertNotNull(connect.channelFuture.get())
         }
