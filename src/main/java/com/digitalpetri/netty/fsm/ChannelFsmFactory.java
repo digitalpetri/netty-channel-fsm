@@ -34,6 +34,7 @@ import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_CF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_DF;
@@ -61,7 +62,8 @@ public class ChannelFsmFactory {
     ChannelFsm newChannelFsm(State initialState) {
         FsmBuilder<State, Event> builder = new FsmBuilder<>(
             config.getExecutor(),
-            config.getLoggerName()
+            config.getLoggerName(),
+            config.getLoggingContext()
         );
 
         configureChannelFsm(builder, config);
@@ -233,12 +235,17 @@ public class ChannelFsmFactory {
                 channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
                     @Override
                     public void channelInactive(ChannelHandlerContext channelContext) throws Exception {
-                        logger.debug(
-                            "[{}] channelInactive() local={}, remote={}",
-                            ctx.getInstanceId(),
-                            channelContext.channel().localAddress(),
-                            channelContext.channel().remoteAddress()
-                        );
+                        config.getLoggingContext().forEach(MDC::put);
+                        try {
+                            logger.debug(
+                                "[{}] channelInactive() local={}, remote={}",
+                                ctx.getInstanceId(),
+                                channelContext.channel().localAddress(),
+                                channelContext.channel().remoteAddress()
+                            );
+                        } finally {
+                            config.getLoggingContext().keySet().forEach(MDC::remove);
+                        }
 
                         if (ctx.currentState() == State.Connected) {
                             ctx.fireEvent(new Event.ChannelInactive());
@@ -249,13 +256,18 @@ public class ChannelFsmFactory {
 
                     @Override
                     public void exceptionCaught(ChannelHandlerContext channelContext, Throwable cause) {
-                        logger.debug(
-                            "[{}] exceptionCaught() local={}, remote={}",
-                            ctx.getInstanceId(),
-                            channelContext.channel().localAddress(),
-                            channelContext.channel().remoteAddress(),
-                            cause
-                        );
+                        config.getLoggingContext().forEach(MDC::put);
+                        try {
+                            logger.debug(
+                                "[{}] exceptionCaught() local={}, remote={}",
+                                ctx.getInstanceId(),
+                                channelContext.channel().localAddress(),
+                                channelContext.channel().remoteAddress(),
+                                cause
+                            );
+                        } finally {
+                            config.getLoggingContext().keySet().forEach(MDC::remove);
+                        }
 
                         if (ctx.currentState() == State.Connected) {
                             channelContext.close();
@@ -268,10 +280,15 @@ public class ChannelFsmFactory {
                             IdleState idleState = ((IdleStateEvent) evt).state();
 
                             if (idleState == IdleState.READER_IDLE) {
-                                logger.debug(
-                                    "[{}] channel idle, maxIdleSeconds={}",
-                                    ctx.getInstanceId(), config.getMaxIdleSeconds()
-                                );
+                                config.getLoggingContext().forEach(MDC::put);
+                                try {
+                                    logger.debug(
+                                        "[{}] channel idle, maxIdleSeconds={}",
+                                        ctx.getInstanceId(), config.getMaxIdleSeconds()
+                                    );
+                                } finally {
+                                    config.getLoggingContext().keySet().forEach(MDC::remove);
+                                }
 
                                 ctx.fireEvent(new Event.ChannelIdle());
                             }

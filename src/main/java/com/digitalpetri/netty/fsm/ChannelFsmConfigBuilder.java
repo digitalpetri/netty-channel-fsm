@@ -16,6 +16,9 @@
 
 package com.digitalpetri.netty.fsm;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -33,6 +36,7 @@ public class ChannelFsmConfigBuilder {
     private Executor executor;
     private Scheduler scheduler;
     private String loggerName;
+    private Map<String, String> loggingContext = Collections.emptyMap();
 
     /**
      * @param lazy {@code true} if the ChannelFsm should be lazy,
@@ -124,6 +128,22 @@ public class ChannelFsmConfigBuilder {
         return this;
     }
 
+    /**
+     * Set the logging context Map a {@link ChannelFsm} instance will use.
+     * <p>
+     * Keys and values in the Map will be set on the SLF4J {@link org.slf4j.MDC} when logging.
+     * <p>
+     * This method makes a defensive copy of {@code loggingContext}.
+     *
+     * @param loggingContext the logging context Map a {@link ChannelFsm} instance will use.
+     * @return this {@link ChannelFsmConfigBuilder}
+     * @see ChannelFsmConfig#getLoggingContext()
+     */
+    public ChannelFsmConfigBuilder setLoggingContext(Map<String, String> loggingContext) {
+        this.loggingContext = new ConcurrentHashMap<>(loggingContext);
+        return this;
+    }
+
     public ChannelFsmConfig build() {
         if (channelActions == null) {
             throw new IllegalArgumentException("channelActions must be non-null");
@@ -149,7 +169,8 @@ public class ChannelFsmConfigBuilder {
             channelActions,
             executor,
             scheduler,
-            loggerName
+            loggerName,
+            loggingContext
         );
     }
 
@@ -172,6 +193,7 @@ public class ChannelFsmConfigBuilder {
         private final Executor executor;
         private final Scheduler scheduler;
         private final String loggerName;
+        private final Map<String, String> loggingContext;
 
         ChannelFsmConfigImpl(
             boolean lazy,
@@ -181,7 +203,9 @@ public class ChannelFsmConfigBuilder {
             ChannelActions channelActions,
             Executor executor,
             Scheduler scheduler,
-            String loggerName) {
+            String loggerName,
+            Map<String, String> loggingContext
+        ) {
 
             this.lazy = lazy;
             this.persistent = persistent;
@@ -191,6 +215,7 @@ public class ChannelFsmConfigBuilder {
             this.executor = executor;
             this.scheduler = scheduler;
             this.loggerName = loggerName;
+            this.loggingContext = loggingContext;
         }
 
         @Override
@@ -231,6 +256,11 @@ public class ChannelFsmConfigBuilder {
         @Override
         public String getLoggerName() {
             return loggerName;
+        }
+
+        @Override
+        public Map<String, String> getLoggingContext() {
+            return loggingContext;
         }
 
     }

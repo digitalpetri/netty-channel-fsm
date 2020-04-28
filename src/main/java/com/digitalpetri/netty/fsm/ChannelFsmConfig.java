@@ -16,6 +16,7 @@
 
 package com.digitalpetri.netty.fsm;
 
+import java.util.Map;
 import java.util.concurrent.Executor;
 
 public interface ChannelFsmConfig {
@@ -88,6 +89,15 @@ public interface ChannelFsmConfig {
      * @return the logger name the FSM should use.
      */
     String getLoggerName();
+
+    /**
+     * Get the logging context Map a {@link ChannelFsm} instance will use.
+     * <p>
+     * Keys and values in the Map will be set on the SLF4J {@link org.slf4j.MDC} when logging.
+     *
+     * @return the logging context Map a {@link ChannelFsm} instance will use.
+     */
+    Map<String, String> getLoggingContext();
 
     /**
      * Create a new {@link ChannelFsmConfigBuilder}.
