@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     `java-library`
-    kotlin("jvm") version "1.3.10"
+    kotlin("jvm") version "1.4.30"
     `maven-publish`
     signing
 }
@@ -63,6 +63,12 @@ task<Jar>("sourcesJar") {
 task<Jar>("javadocJar") {
     from(tasks.javadoc)
     classifier = "javadoc"
+}
+
+tasks.withType<Jar> {
+    manifest {
+        attributes("Automatic-Module-Name" to "com.digitalpetri.netty.fsm")
+    }
 }
 
 publishing {
