@@ -23,7 +23,7 @@ dependencies {
     // BYO Netty
     compileOnly("io.netty:netty-handler:4.0+")
 
-    testImplementation(kotlin("stdlib", "1.3.10"))
+    testImplementation(kotlin("stdlib", "1.4.30"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.0.1")
     testImplementation("io.netty:netty-handler:4.0+")
     testImplementation("io.netty:netty-transport:4.0+")
