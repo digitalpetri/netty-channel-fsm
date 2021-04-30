@@ -1,3 +1,6 @@
+# Netty Channel FSM
+![Maven Central](https://img.shields.io/maven-central/v/com.digitalpetri.netty/netty-channel-fsm)
+
 A `ChannelFsm` manages non-blocking access to a Netty `Channel` instance. 
 
 Access to the Channel happens via `connect()`, `disconnect()`, and `getChannel()`. 
@@ -7,7 +10,7 @@ Once connected, the state machine works to keep the Channel connected until `dis
 ## Gradle
 ```
 dependencies {
-    compile("com.digitalpetri.netty:netty-channel-fsm:0.3")
+    compile("com.digitalpetri.netty:netty-channel-fsm:0.5")
 }
 ```
 
@@ -17,7 +20,7 @@ dependencies {
     <dependency>
       <groupId>com.digitalpetri.netty</groupId>
       <artifactId>netty-channel-fsm</artifactId>
-      <version>0.3</version>
+      <version>0.5</version>
     </dependency>
 </dependencies>
 ```
