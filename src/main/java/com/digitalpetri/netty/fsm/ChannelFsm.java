@@ -76,11 +76,35 @@ public class ChannelFsm {
      * are necessary depends on whether the FSM is configured to be persistent in its connection attempts or not.
      * <p>
      * The returned CompletableFuture always fails exceptionally if the FSM is not connected.
+     * <p>
+     * This method is equivalent to {@code getChannel(true)} - if the state machine is reconnecting it will wait for
+     * the result.
      *
      * @return a {@link CompletableFuture} that completes successfully when the {@link Channel} is available and
      * completes exceptionally if the FSM is not currently connected or the connection attempt failed.
      */
     public CompletableFuture<Channel> getChannel() {
+        return getChannel(true);
+    }
+
+    /**
+     * Fire a {@link GetChannel} event and return a {@link CompletableFuture} that completes successfully when the
+     * {@link Channel} is available and completes exceptionally if the FSM is not currently connected or the connection
+     * attempt failed.
+     * <p>
+     * {@link #connect()} must have been called at least once before attempting to get a Channel. Whether further calls
+     * are necessary depends on whether the FSM is configured to be persistent in its connection attempts or not.
+     * <p>
+     * The returned CompletableFuture always fails exceptionally if the FSM is not connected.
+     *
+     * @param waitForReconnect when {@code true} and the state machine is in {@link State#ReconnectWait} the future
+     *                         will not be completed until the result of the subsequent reconnect attempt has been
+     *                         obtained. When {@code false} and the state machine is in {@link State#ReconnectWait}
+     *                         the future is failed immediately. This parameter has no effect in other states.
+     * @return a {@link CompletableFuture} that completes successfully when the {@link Channel} is available and
+     * *completes exceptionally if the FSM is not currently connected or the connection attempt failed.
+     */
+    public CompletableFuture<Channel> getChannel(boolean waitForReconnect) {
         CompletableFuture<Channel> future = fsm.getFromContext(ctx -> {
             State state = ctx.currentState();
 
@@ -99,7 +123,7 @@ public class ChannelFsm {
             return future;
         } else {
             // "Slow" path... not connected yet.
-            GetChannel getChannel = new GetChannel();
+            GetChannel getChannel = new GetChannel(waitForReconnect);
 
             fsm.fireEvent(getChannel);
 

@@ -17,7 +17,6 @@
 package com.digitalpetri.netty.fsm
 
 import com.digitalpetri.netty.fsm.ChannelFsm.*
-import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -217,6 +216,14 @@ class ReconnectWaitActions {
 
         assertEventualState(fsm, State.ReconnectWait)
 
+        assertWithTimeout {
+            val getChannel = Event.GetChannel(false)
+            fsm.fsm.fireEvent(getChannel)
+
+            assertThrows(Exception::class.java) {
+                getChannel.channelFuture.get()
+            }
+        }
 
         run {
             val getChannel = Event.GetChannel()
@@ -288,5 +295,5 @@ class ReconnectWaitActions {
             assertNull(KEY_RDF.get(ctx))
         }
     }
-    
+
 }

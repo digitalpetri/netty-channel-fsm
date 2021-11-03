@@ -436,7 +436,18 @@ public class ChannelFsmFactory {
 
         fb.onInternalTransition(State.ReconnectWait)
             .via(Event.GetChannel.class)
-            .execute(ctx -> handleGetChannelEvent(ctx, config));
+            .execute(ctx -> {
+                Event.GetChannel event = (Event.GetChannel) ctx.event();
+
+                if (event.waitForReconnect) {
+                    handleGetChannelEvent(ctx, config);
+                } else {
+                    config.getExecutor().execute(
+                        () ->
+                            event.channelFuture.completeExceptionally(new Exception("not reconnected"))
+                    );
+                }
+            });
 
         fb.onTransitionFrom(State.ReconnectWait)
             .to(State.NotConnected)
