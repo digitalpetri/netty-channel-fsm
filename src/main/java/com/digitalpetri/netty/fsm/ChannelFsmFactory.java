@@ -442,9 +442,9 @@ public class ChannelFsmFactory {
                 if (event.waitForReconnect) {
                     handleGetChannelEvent(ctx, config);
                 } else {
-                    config.getExecutor().execute(
-                        () ->
-                            event.channelFuture.completeExceptionally(new Exception("not reconnected"))
+                    config.getExecutor().execute(() ->
+                        event.channelFuture
+                            .completeExceptionally(new Exception("not reconnected"))
                     );
                 }
             });
