@@ -8,14 +8,14 @@ plugins {
 }
 
 group = "com.digitalpetri.netty"
-version = "0.5"
+version = "0.6-SNAPSHOT"
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    compile("com.digitalpetri.fsm:strict-machine:0.4")
+    api("com.digitalpetri.fsm:strict-machine:0.5")
 
     // BYO SLF4J
     compileOnly("org.slf4j:slf4j-api:1.7.+")
@@ -57,12 +57,12 @@ tasks {
 
 task<Jar>("sourcesJar") {
     from(sourceSets.main.get().allJava)
-    classifier = "sources"
+    archiveClassifier.set("sources")
 }
 
 task<Jar>("javadocJar") {
     from(tasks.javadoc)
-    classifier = "javadoc"
+    archiveClassifier.set("javadoc")
 }
 
 tasks.withType<Jar> {

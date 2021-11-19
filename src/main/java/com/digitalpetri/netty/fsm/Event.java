@@ -90,6 +90,16 @@ public interface Event {
     class GetChannel implements Event {
         final CompletableFuture<Channel> channelFuture = new CompletableFuture<>();
 
+        final boolean waitForReconnect;
+
+        GetChannel() {
+            this(true);
+        }
+
+        GetChannel(boolean waitForReconnect) {
+            this.waitForReconnect = waitForReconnect;
+        }
+
         @Override
         public String toString() {
             return getClass().getSimpleName();
