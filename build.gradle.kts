@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.digitalpetri.netty"
-version = "0.6-SNAPSHOT"
+version = "0.6"
 
 repositories {
     mavenCentral()
