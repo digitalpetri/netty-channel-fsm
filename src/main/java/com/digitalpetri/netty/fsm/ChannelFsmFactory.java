@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit;
 import com.digitalpetri.netty.fsm.ChannelFsm.ConnectFuture;
 import com.digitalpetri.netty.fsm.ChannelFsm.DisconnectFuture;
 import com.digitalpetri.netty.fsm.Scheduler.Cancellable;
-import com.digitalpetri.strictmachine.Fsm;
 import com.digitalpetri.strictmachine.FsmContext;
 import com.digitalpetri.strictmachine.dsl.ActionContext;
 import com.digitalpetri.strictmachine.dsl.FsmBuilder;
@@ -68,9 +67,7 @@ public class ChannelFsmFactory {
 
         configureChannelFsm(builder, config);
 
-        Fsm<State, Event> fsm = builder.build(initialState);
-
-        return new ChannelFsm(fsm);
+        return new ChannelFsm(builder, initialState);
     }
 
     /**

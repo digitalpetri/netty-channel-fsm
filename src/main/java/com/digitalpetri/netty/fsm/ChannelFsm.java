@@ -16,7 +16,9 @@
 
 package com.digitalpetri.netty.fsm;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import com.digitalpetri.netty.fsm.Event.Connect;
 import com.digitalpetri.netty.fsm.Event.Disconnect;
@@ -24,14 +26,34 @@ import com.digitalpetri.netty.fsm.Event.GetChannel;
 import com.digitalpetri.netty.fsm.Scheduler.Cancellable;
 import com.digitalpetri.strictmachine.Fsm;
 import com.digitalpetri.strictmachine.FsmContext;
+import com.digitalpetri.strictmachine.dsl.ActionContext;
+import com.digitalpetri.strictmachine.dsl.FsmBuilder;
+import com.digitalpetri.strictmachine.dsl.TransitionAction;
 import io.netty.channel.Channel;
 
 public class ChannelFsm {
 
+    private final List<TransitionListener> transitionListeners = new CopyOnWriteArrayList<>();
+
     private final Fsm<State, Event> fsm;
 
-    ChannelFsm(Fsm<State, Event> fsm) {
-        this.fsm = fsm;
+    ChannelFsm(FsmBuilder<State, Event> builder, State initialState) {
+        builder.addTransitionAction(new TransitionAction<State, Event>() {
+            @Override
+            public void execute(ActionContext<State, Event> context) {
+                transitionListeners.forEach(
+                    listener ->
+                        listener.onStateTransition(context.from(), context.to(), context.event())
+                );
+            }
+
+            @Override
+            public boolean matches(State from, State to, Event event) {
+                return true;
+            }
+        });
+
+        this.fsm = builder.build(initialState);
     }
 
     Fsm<State, Event> getFsm() {
@@ -140,6 +162,24 @@ public class ChannelFsm {
         return fsm.getFromContext(FsmContext::currentState);
     }
 
+    /**
+     * Add a {@link TransitionListener}.
+     *
+     * @param transitionListener the {@link TransitionListener}.
+     */
+    public void addTransitionListener(TransitionListener transitionListener) {
+        transitionListeners.add(transitionListener);
+    }
+
+    /**
+     * Remove a previously registered {@link TransitionListener}.
+     *
+     * @param transitionListener the {@link TransitionListener}.
+     */
+    public void removeTransitionListener(TransitionListener transitionListener) {
+        transitionListeners.remove(transitionListener);
+    }
+
     static final FsmContext.Key<ConnectFuture> KEY_CF =
         new FsmContext.Key<>("connectFuture", ConnectFuture.class);
 
@@ -158,6 +198,24 @@ public class ChannelFsm {
 
     static class DisconnectFuture {
         final CompletableFuture<Void> future = new CompletableFuture<>();
+    }
+
+    public interface TransitionListener {
+
+        /**
+         * A state transition has occurred.
+         * <p>
+         * Transitions may be internal, i.e. the {@code from} and {@code to} state are the same.
+         * <p>
+         * Listener notification is implemented as a {@link TransitionAction}, so take care not to
+         * block in this callback as it will block the state machine evaluation as well.
+         *
+         * @param from the {@link State} transitioned from.
+         * @param to   the {@link State} transitioned to.
+         * @param via  the {@link Event} that caused the transition.
+         */
+        void onStateTransition(State from, State to, Event via);
+
     }
 
 }
