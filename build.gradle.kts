@@ -15,7 +15,7 @@ repositories {
 }
 
 dependencies {
-    api("com.digitalpetri.fsm:strict-machine:0.5")
+    api("com.digitalpetri.fsm:strict-machine:0.6")
 
     // BYO SLF4J
     compileOnly("org.slf4j:slf4j-api:1.7.+")
