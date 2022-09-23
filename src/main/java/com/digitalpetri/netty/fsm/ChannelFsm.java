@@ -56,7 +56,7 @@ public class ChannelFsm {
         this.fsm = builder.build(initialState);
     }
 
-    Fsm<State, Event> getFsm() {
+    public Fsm<State, Event> getFsm() {
         return fsm;
     }
 
