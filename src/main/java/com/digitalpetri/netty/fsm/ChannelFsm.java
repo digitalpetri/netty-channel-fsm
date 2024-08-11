@@ -16,20 +16,19 @@
 
 package com.digitalpetri.netty.fsm;
 
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
-
+import com.digitalpetri.fsm.Fsm;
+import com.digitalpetri.fsm.FsmContext;
+import com.digitalpetri.fsm.dsl.ActionContext;
+import com.digitalpetri.fsm.dsl.FsmBuilder;
+import com.digitalpetri.fsm.dsl.TransitionAction;
 import com.digitalpetri.netty.fsm.Event.Connect;
 import com.digitalpetri.netty.fsm.Event.Disconnect;
 import com.digitalpetri.netty.fsm.Event.GetChannel;
 import com.digitalpetri.netty.fsm.Scheduler.Cancellable;
-import com.digitalpetri.strictmachine.Fsm;
-import com.digitalpetri.strictmachine.FsmContext;
-import com.digitalpetri.strictmachine.dsl.ActionContext;
-import com.digitalpetri.strictmachine.dsl.FsmBuilder;
-import com.digitalpetri.strictmachine.dsl.TransitionAction;
 import io.netty.channel.Channel;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class ChannelFsm {
 

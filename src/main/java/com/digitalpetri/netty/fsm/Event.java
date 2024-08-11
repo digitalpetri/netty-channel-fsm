@@ -16,9 +16,8 @@
 
 package com.digitalpetri.netty.fsm;
 
-import java.util.concurrent.CompletableFuture;
-
 import io.netty.channel.Channel;
+import java.util.concurrent.CompletableFuture;
 
 public interface Event {
 

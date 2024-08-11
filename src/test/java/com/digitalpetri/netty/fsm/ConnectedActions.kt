@@ -16,7 +16,7 @@
 
 package com.digitalpetri.netty.fsm
 
-import com.digitalpetri.strictmachine.FsmContext
+import com.digitalpetri.fsm.FsmContext
 import io.netty.channel.Channel
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test

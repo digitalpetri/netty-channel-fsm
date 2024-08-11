@@ -16,10 +16,9 @@
 
 package com.digitalpetri.netty.fsm;
 
-import java.util.concurrent.CompletableFuture;
-
-import com.digitalpetri.strictmachine.FsmContext;
+import com.digitalpetri.fsm.FsmContext;
 import io.netty.channel.Channel;
+import java.util.concurrent.CompletableFuture;
 
 public interface ChannelActions {
 

@@ -16,7 +16,7 @@
 
 package com.digitalpetri.netty.fsm
 
-import com.digitalpetri.strictmachine.FsmContext
+import com.digitalpetri.fsm.FsmContext
 import io.netty.channel.Channel
 import io.netty.channel.embedded.EmbeddedChannel
 import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
