@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-package com.digitalpetri.netty.fsm.util;
+package com.digitalpetri.netty.fsm;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
-public class CompletionBuilders {
+class CompletionBuilders {
+
+  private CompletionBuilders() {}
 
   /**
    * Complete {@code future} with the result of the {@link CompletableFuture} that is provided to

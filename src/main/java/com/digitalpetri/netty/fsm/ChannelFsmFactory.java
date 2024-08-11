@@ -20,7 +20,7 @@ import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_CF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_DF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RD;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RDF;
-import static com.digitalpetri.netty.fsm.util.CompletionBuilders.completeAsync;
+import static com.digitalpetri.netty.fsm.CompletionBuilders.completeAsync;
 
 import com.digitalpetri.fsm.FsmContext;
 import com.digitalpetri.fsm.Log;
