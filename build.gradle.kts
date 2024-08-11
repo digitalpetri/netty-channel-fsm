@@ -15,10 +15,7 @@ repositories {
 }
 
 dependencies {
-    api("com.digitalpetri.fsm:strict-machine:0.6")
-
-    // BYO SLF4J
-    compileOnly("org.slf4j:slf4j-api:1.7.+")
+    api("com.digitalpetri.fsm:strict-machine:1.0.0-SNAPSHOT")
 
     // BYO Netty
     compileOnly("io.netty:netty-handler:4.0+")
@@ -38,12 +35,12 @@ repositories {
 
 tasks {
     withType<JavaCompile> {
-        sourceCompatibility = "1.8"
-        targetCompatibility = "1.8"
+        sourceCompatibility = "11"
+        targetCompatibility = "11"
     }
 
     withType<KotlinCompile> {
-        kotlinOptions.jvmTarget = "1.8"
+        kotlinOptions.jvmTarget = "11"
     }
 
     withType<Test> {

@@ -16,13 +16,17 @@
 
 package com.digitalpetri.netty.fsm;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_CF;
+import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_DF;
+import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RD;
+import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RDF;
+import static com.digitalpetri.netty.fsm.util.CompletionBuilders.completeAsync;
 
 import com.digitalpetri.netty.fsm.ChannelFsm.ConnectFuture;
 import com.digitalpetri.netty.fsm.ChannelFsm.DisconnectFuture;
 import com.digitalpetri.netty.fsm.Scheduler.Cancellable;
 import com.digitalpetri.strictmachine.FsmContext;
+import com.digitalpetri.strictmachine.Log;
 import com.digitalpetri.strictmachine.dsl.ActionContext;
 import com.digitalpetri.strictmachine.dsl.FsmBuilder;
 import io.netty.channel.Channel;
@@ -31,15 +35,8 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
-
-import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_CF;
-import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_DF;
-import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RD;
-import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RDF;
-import static com.digitalpetri.netty.fsm.util.CompletionBuilders.completeAsync;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public class ChannelFsmFactory {
 
@@ -59,11 +56,7 @@ public class ChannelFsmFactory {
     }
 
     ChannelFsm newChannelFsm(State initialState) {
-        FsmBuilder<State, Event> builder = new FsmBuilder<>(
-            config.getExecutor(),
-            config.getLoggerName(),
-            config.getLoggingContext()
-        );
+        var builder = new FsmBuilder<State, Event>(config.getContext(), config.getExecutor());
 
         configureChannelFsm(builder, config);
 
@@ -90,7 +83,11 @@ public class ChannelFsmFactory {
         configureReconnectingState(fb, config);
     }
 
-    private static void configureNotConnectedState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
+    private static void configureNotConnectedState(
+        FsmBuilder<State, Event> fb,
+        ChannelFsmConfig config
+    ) {
+
         fb.when(State.NotConnected)
             .on(Event.Connect.class)
             .transitionTo(State.Connecting);
@@ -141,7 +138,11 @@ public class ChannelFsmFactory {
             });
     }
 
-    private static void configureConnectingState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
+    private static void configureConnectingState(
+        FsmBuilder<State, Event> fb,
+        ChannelFsmConfig config
+    ) {
+
         if (config.isPersistent()) {
             if (config.isLazy()) {
                 fb.when(State.Connecting)
@@ -197,8 +198,10 @@ public class ChannelFsmFactory {
             .execute(ctx -> handleConnectFailureEvent(ctx, config));
     }
 
-    private static void configureConnectedState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
-        Logger logger = LoggerFactory.getLogger(config.getLoggerName());
+    private static void configureConnectedState(
+        FsmBuilder<State, Event> fb,
+        ChannelFsmConfig config
+    ) {
 
         fb.when(State.Connected)
             .on(Event.Disconnect.class)
@@ -226,23 +229,22 @@ public class ChannelFsmFactory {
                 Channel channel = event.channel;
 
                 if (config.getMaxIdleSeconds() > 0) {
-                    channel.pipeline().addFirst(new IdleStateHandler(config.getMaxIdleSeconds(), 0, 0));
+                    channel.pipeline()
+                        .addFirst(new IdleStateHandler(config.getMaxIdleSeconds(), 0, 0));
                 }
 
                 channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
                     @Override
-                    public void channelInactive(ChannelHandlerContext channelContext) throws Exception {
-                        config.getLoggingContext().forEach(MDC::put);
-                        try {
-                            logger.debug(
-                                "[{}] channelInactive() local={}, remote={}",
-                                ctx.getInstanceId(),
-                                channelContext.channel().localAddress(),
-                                channelContext.channel().remoteAddress()
-                            );
-                        } finally {
-                            config.getLoggingContext().keySet().forEach(MDC::remove);
-                        }
+                    public void channelInactive(
+                        ChannelHandlerContext channelContext
+                    ) throws Exception {
+
+                        Log.debug(
+                            config.getContext(),
+                            "channelInactive() local=%s, remote=%s",
+                            channelContext.channel().localAddress(),
+                            channelContext.channel().remoteAddress()
+                        );
 
                         if (ctx.currentState() == State.Connected) {
                             ctx.fireEvent(new Event.ChannelInactive());
@@ -252,19 +254,18 @@ public class ChannelFsmFactory {
                     }
 
                     @Override
-                    public void exceptionCaught(ChannelHandlerContext channelContext, Throwable cause) {
-                        config.getLoggingContext().forEach(MDC::put);
-                        try {
-                            logger.debug(
-                                "[{}] exceptionCaught() local={}, remote={}",
-                                ctx.getInstanceId(),
-                                channelContext.channel().localAddress(),
-                                channelContext.channel().remoteAddress(),
-                                cause
-                            );
-                        } finally {
-                            config.getLoggingContext().keySet().forEach(MDC::remove);
-                        }
+                    public void exceptionCaught(
+                        ChannelHandlerContext channelContext,
+                        Throwable cause
+                    ) {
+
+                        Log.debug(
+                            config.getContext(),
+                            "exceptionCaught() local=%s, remote=%s%n%s",
+                            channelContext.channel().localAddress(),
+                            channelContext.channel().remoteAddress(),
+                            cause
+                        );
 
                         if (ctx.currentState() == State.Connected) {
                             channelContext.close();
@@ -272,20 +273,20 @@ public class ChannelFsmFactory {
                     }
 
                     @Override
-                    public void userEventTriggered(ChannelHandlerContext channelContext, Object evt) throws Exception {
+                    public void userEventTriggered(
+                        ChannelHandlerContext channelContext,
+                        Object evt
+                    ) throws Exception {
+
                         if (evt instanceof IdleStateEvent) {
                             IdleState idleState = ((IdleStateEvent) evt).state();
 
                             if (idleState == IdleState.READER_IDLE) {
-                                config.getLoggingContext().forEach(MDC::put);
-                                try {
-                                    logger.debug(
-                                        "[{}] channel idle, maxIdleSeconds={}",
-                                        ctx.getInstanceId(), config.getMaxIdleSeconds()
-                                    );
-                                } finally {
-                                    config.getLoggingContext().keySet().forEach(MDC::remove);
-                                }
+                                Log.debug(
+                                    config.getContext(),
+                                    "channel idle, maxIdleSeconds=%s",
+                                    config.getMaxIdleSeconds()
+                                );
 
                                 ctx.fireEvent(new Event.ChannelIdle());
                             }
@@ -294,7 +295,6 @@ public class ChannelFsmFactory {
                         super.userEventTriggered(channelContext, evt);
                     }
                 });
-
 
                 ConnectFuture cf = KEY_CF.get(ctx);
                 config.getExecutor().execute(() -> cf.future.complete(channel));
@@ -335,7 +335,11 @@ public class ChannelFsmFactory {
             });
     }
 
-    private static void configureDisconnectingState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
+    private static void configureDisconnectingState(
+        FsmBuilder<State, Event> fb,
+        ChannelFsmConfig config
+    ) {
+
         fb.when(State.Disconnecting)
             .on(Event.DisconnectSuccess.class)
             .transitionTo(State.NotConnected);
@@ -387,7 +391,11 @@ public class ChannelFsmFactory {
             .execute(FsmContext::processShelvedEvents);
     }
 
-    private static void configureReconnectWaitState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
+    private static void configureReconnectWaitState(
+        FsmBuilder<State, Event> fb,
+        ChannelFsmConfig config
+    ) {
+
         fb.when(State.ReconnectWait)
             .on(Event.ReconnectDelayElapsed.class)
             .transitionTo(State.Reconnecting);
@@ -472,7 +480,11 @@ public class ChannelFsmFactory {
             });
     }
 
-    private static void configureReconnectingState(FsmBuilder<State, Event> fb, ChannelFsmConfig config) {
+    private static void configureReconnectingState(
+        FsmBuilder<State, Event> fb,
+        ChannelFsmConfig config
+    ) {
+
         fb.when(State.Reconnecting)
             .on(Event.ConnectFailure.class)
             .transitionTo(State.ReconnectWait);
@@ -560,28 +572,41 @@ public class ChannelFsmFactory {
                     connectFuture.future.getNow(null)
                 );
 
-                disconnectFuture.whenComplete((v, ex) -> ctx.fireEvent(new Event.DisconnectSuccess()));
+                disconnectFuture.whenComplete(
+                    (v, ex) -> ctx.fireEvent(new Event.DisconnectSuccess()));
             });
         } else {
             ctx.fireEvent(new Event.DisconnectSuccess());
         }
     }
 
-    private static void handleConnectEvent(ActionContext<State, Event> ctx, ChannelFsmConfig config) {
+    private static void handleConnectEvent(
+        ActionContext<State, Event> ctx,
+        ChannelFsmConfig config
+    ) {
+
         CompletableFuture<Channel> channelFuture = KEY_CF.get(ctx).future;
 
         Event.Connect connectEvent = (Event.Connect) ctx.event();
         completeAsync(connectEvent.channelFuture, config.getExecutor()).with(channelFuture);
     }
 
-    private static void handleGetChannelEvent(ActionContext<State, Event> ctx, ChannelFsmConfig config) {
+    private static void handleGetChannelEvent(
+        ActionContext<State, Event> ctx,
+        ChannelFsmConfig config
+    ) {
+
         CompletableFuture<Channel> channelFuture = KEY_CF.get(ctx).future;
 
         Event.GetChannel getChannelEvent = (Event.GetChannel) ctx.event();
         completeAsync(getChannelEvent.channelFuture, config.getExecutor()).with(channelFuture);
     }
 
-    private static void handleConnectFailureEvent(ActionContext<State, Event> ctx, ChannelFsmConfig config) {
+    private static void handleConnectFailureEvent(
+        ActionContext<State, Event> ctx,
+        ChannelFsmConfig config
+    ) {
+
         ConnectFuture cf = KEY_CF.remove(ctx);
 
         if (cf != null) {
