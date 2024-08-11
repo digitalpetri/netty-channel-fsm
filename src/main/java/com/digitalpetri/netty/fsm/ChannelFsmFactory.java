@@ -210,14 +210,14 @@ public class ChannelFsmFactory {
     if (config.isLazy()) {
       fb.when(State.Connected)
           .on(e ->
-              e.getClass() == Event.ChannelInactive.class ||
-                  e.getClass() == Event.KeepAliveFailure.class)
+              e.getClass() == Event.ChannelInactive.class
+                  || e.getClass() == Event.KeepAliveFailure.class)
           .transitionTo(State.Idle);
     } else {
       fb.when(State.Connected)
           .on(e ->
-              e.getClass() == Event.ChannelInactive.class ||
-                  e.getClass() == Event.KeepAliveFailure.class)
+              e.getClass() == Event.ChannelInactive.class
+                  || e.getClass() == Event.KeepAliveFailure.class)
           .transitionTo(State.ReconnectWait);
     }
 
