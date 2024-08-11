@@ -20,14 +20,18 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 
-class DisconnectingTransitions {
+class IdleActionsTest {
 
     @Test
-    fun `S(DISCONNECTING) x E(DisconnectSuccess) = S'(NOT_CONNECTED)`() {
-        val fsm = factory().newChannelFsm(State.Disconnecting)
-        val event = Event.DisconnectSuccess()
+    fun `Transition from IDLE to NOT_CONNECTED via Disconnect completes Disconnect future`() {
+        val fsm = factory().newChannelFsm(State.Idle)
 
-        assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(event))
+        val disconnect = Event.Disconnect()
+        assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(disconnect))
+
+        assertWithTimeout {
+            disconnect.disconnectFuture.get()
+        }
     }
 
 }

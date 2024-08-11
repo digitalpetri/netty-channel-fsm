@@ -26,7 +26,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 
 
-class ConnectingActions {
+class ConnectingActionsTest {
 
     @Test
     fun `External transition to CONNECTING via Connect`() {

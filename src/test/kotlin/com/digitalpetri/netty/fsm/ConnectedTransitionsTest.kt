@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 
-class ConnectedTransitions {
+class ConnectedTransitionsTest {
 
     @Test
     fun `S(CONNECTED) x E(Disconnect) = S'(DISCONNECTING)`() {

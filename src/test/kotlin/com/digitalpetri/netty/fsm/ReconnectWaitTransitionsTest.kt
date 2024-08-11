@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 
-class ReconnectWaitTransitions {
+class ReconnectWaitTransitionsTest {
 
     @Test
     fun `S(RECONNECT_WAIT) x E(ReconnectDelayElapsed) = S'(RECONNECTING)`() {

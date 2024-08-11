@@ -16,27 +16,34 @@
 
 package com.digitalpetri.netty.fsm
 
-import io.netty.channel.embedded.EmbeddedChannel
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import java.util.concurrent.ExecutionException
 
 
-class ReconnectingTransitions {
+class NotConnectedActionsTest {
 
     @Test
-    fun `S(RECONNECTING) x E(ConnectFailure) = S'(RECONNECT_WAIT)`() {
-        val fsm = factory().newChannelFsm(State.Reconnecting)
-        val event = Event.ConnectFailure(Exception("failed"))
+    fun `Internal transition via Disconnect completes successfully`() {
+        val fsm = factory().newChannelFsm()
 
-        assertEquals(State.ReconnectWait, fsm.fsm.fireEventBlocking(event))
+        val event = Event.Disconnect()
+
+        assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(event))
+
+        assertWithTimeout { event.disconnectFuture.get() }
     }
 
     @Test
-    fun `S(RECONNECTING) x E(ConnectSuccess) = S'(CONNECTED)`() {
-        val fsm = factory().newChannelFsm(State.Reconnecting)
-        val event = Event.ConnectSuccess(EmbeddedChannel())
+    fun `Internal transition via GetChannel completes exceptionally`() {
+        val fsm = factory().newChannelFsm()
 
-        assertEquals(State.Connected, fsm.fsm.fireEventBlocking(event))
+        val event = Event.GetChannel()
+
+        assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(event))
+
+        assertThrows<ExecutionException> { event.channelFuture.get() }
     }
 
 }

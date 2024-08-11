@@ -20,20 +20,14 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 
-class NotConnectedTransitions {
+class DisconnectingTransitionsTest {
 
     @Test
-    fun `S(NOT_CONNECTED) x E(Connect) = S'(CONNECTING)`() {
-        val fsm = factory().newChannelFsm()
+    fun `S(DISCONNECTING) x E(DisconnectSuccess) = S'(NOT_CONNECTED)`() {
+        val fsm = factory().newChannelFsm(State.Disconnecting)
+        val event = Event.DisconnectSuccess()
 
-        val event = Event.Connect()
-
-        assertEquals(State.Connecting, fsm.fsm.fireEventBlocking(event)) {
-            "expected State.CONNECTING"
-        }
+        assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(event))
     }
 
 }
-
-
-

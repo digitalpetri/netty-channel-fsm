@@ -23,7 +23,7 @@ import org.junit.jupiter.api.assertThrows
 import java.util.concurrent.ExecutionException
 
 
-class ReconnectWaitActions {
+class ReconnectWaitActionsTest {
 
     @Test
     fun `External transition to RECONNECT_WAIT from RECONNECTING via ConnectFailure notifies ConnectFuture`() {

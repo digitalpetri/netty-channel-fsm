@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
 
-class ReconnectingActions {
+class ReconnectingActionsTest {
 
     @Test
     fun `Transition from RECONNECT_WAIT triggers connect()`() {

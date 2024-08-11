@@ -297,7 +297,9 @@ public class ChannelFsmFactory {
           });
 
           ConnectFuture cf = KEY_CF.get(ctx);
-          config.getExecutor().execute(() -> cf.future.complete(channel));
+          if (cf != null) {
+            config.getExecutor().execute(() -> cf.future.complete(channel));
+          }
         });
 
     fb.onInternalTransition(State.Connected)

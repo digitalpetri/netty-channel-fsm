@@ -23,7 +23,7 @@ import org.junit.jupiter.api.assertThrows
 import java.util.concurrent.ExecutionException
 
 
-class DisconnectingActions {
+class DisconnectingActionsTest {
 
     @Test
     fun `External transition to DISCONNECTING from CONNECTED via Disconnect`() {

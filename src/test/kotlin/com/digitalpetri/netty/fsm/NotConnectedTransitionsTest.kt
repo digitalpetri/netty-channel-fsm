@@ -17,34 +17,23 @@
 package com.digitalpetri.netty.fsm
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
-import java.util.concurrent.ExecutionException
 
 
-class NotConnectedActions {
+class NotConnectedTransitionsTest {
 
     @Test
-    fun `Internal transition via Disconnect completes successfully`() {
+    fun `S(NOT_CONNECTED) x E(Connect) = S'(CONNECTING)`() {
         val fsm = factory().newChannelFsm()
 
-        val event = Event.Disconnect()
+        val event = Event.Connect()
 
-        assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(event))
-
-        assertWithTimeout { event.disconnectFuture.get() }
-    }
-
-    @Test
-    fun `Internal transition via GetChannel completes exceptionally`() {
-        val fsm = factory().newChannelFsm()
-
-        val event = Event.GetChannel()
-
-        assertEquals(State.NotConnected, fsm.fsm.fireEventBlocking(event))
-
-        assertThrows<ExecutionException> { event.channelFuture.get() }
+        assertEquals(State.Connecting, fsm.fsm.fireEventBlocking(event)) {
+            "expected State.CONNECTING"
+        }
     }
 
 }
+
+
+

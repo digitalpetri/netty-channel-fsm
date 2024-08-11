@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 
-class ConnectingTransitions {
+class ConnectingTransitionsTest {
 
     @Test
     fun `S(CONNECTING) x E(ConnectFailure) = S'(IDLE) (persistent=true, lazy=true)`() {

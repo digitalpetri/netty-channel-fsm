@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
 
-class IdleTransitions {
+class IdleTransitionsTest {
 
     @Test
     fun `S(IDLE) x E(Connect) = S'(RECONNECTING)`() {

@@ -25,7 +25,7 @@ import java.util.concurrent.CompletableFuture.completedFuture
 import java.util.concurrent.CountDownLatch
 
 
-class ConnectedActions {
+class ConnectedActionsTest {
 
     @Test
     fun `External transition to CONNECTED via ConnectSuccess`() {
