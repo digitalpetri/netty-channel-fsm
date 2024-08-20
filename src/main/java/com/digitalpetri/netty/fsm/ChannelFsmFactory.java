@@ -17,7 +17,6 @@ import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RDF;
 import static com.digitalpetri.netty.fsm.CompletionBuilders.completeAsync;
 
 import com.digitalpetri.fsm.FsmContext;
-import com.digitalpetri.fsm.Log;
 import com.digitalpetri.fsm.dsl.ActionContext;
 import com.digitalpetri.fsm.dsl.FsmBuilder;
 import com.digitalpetri.netty.fsm.ChannelFsm.ConnectFuture;
@@ -31,6 +30,9 @@ import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 public class ChannelFsmFactory {
 
@@ -50,7 +52,12 @@ public class ChannelFsmFactory {
   }
 
   ChannelFsm newChannelFsm(State initialState) {
-    var builder = new FsmBuilder<State, Event>(config.getContext(), config.getExecutor());
+    var builder = new FsmBuilder<State, Event>(
+        config.getLoggerName(),
+        config.getLoggingContext(),
+        config.getExecutor(),
+        config.getUserContext()
+    );
 
     configureChannelFsm(builder, config);
 
@@ -197,6 +204,8 @@ public class ChannelFsmFactory {
       ChannelFsmConfig config
   ) {
 
+    Logger logger = LoggerFactory.getLogger(config.getLoggerName());
+
     fb.when(State.Connected)
         .on(Event.Disconnect.class)
         .transitionTo(State.Disconnecting);
@@ -233,12 +242,16 @@ public class ChannelFsmFactory {
                 ChannelHandlerContext channelContext
             ) throws Exception {
 
-              Log.debug(
-                  config.getContext(),
-                  "channelInactive() local=%s, remote=%s",
-                  channelContext.channel().localAddress(),
-                  channelContext.channel().remoteAddress()
-              );
+              config.getLoggingContext().forEach(MDC::put);
+              try {
+                logger.debug(
+                    "channelInactive() local={}, remote={}",
+                    channelContext.channel().localAddress(),
+                    channelContext.channel().remoteAddress()
+                );
+              } finally {
+                config.getLoggingContext().keySet().forEach(MDC::remove);
+              }
 
               if (ctx.currentState() == State.Connected) {
                 ctx.fireEvent(new Event.ChannelInactive());
@@ -253,13 +266,17 @@ public class ChannelFsmFactory {
                 Throwable cause
             ) {
 
-              Log.debug(
-                  config.getContext(),
-                  "exceptionCaught() local=%s, remote=%s%n%s",
-                  channelContext.channel().localAddress(),
-                  channelContext.channel().remoteAddress(),
-                  cause
-              );
+              config.getLoggingContext().forEach(MDC::put);
+              try {
+                logger.debug(
+                    "exceptionCaught() local={}, remote={}",
+                    channelContext.channel().localAddress(),
+                    channelContext.channel().remoteAddress(),
+                    cause
+                );
+              } finally {
+                config.getLoggingContext().keySet().forEach(MDC::remove);
+              }
 
               if (ctx.currentState() == State.Connected) {
                 channelContext.close();
@@ -276,11 +293,12 @@ public class ChannelFsmFactory {
                 IdleState idleState = ((IdleStateEvent) evt).state();
 
                 if (idleState == IdleState.READER_IDLE) {
-                  Log.debug(
-                      config.getContext(),
-                      "channel idle, maxIdleSeconds=%s",
-                      config.getMaxIdleSeconds()
-                  );
+                  config.getLoggingContext().forEach(MDC::put);
+                  try {
+                    logger.debug("channel idle, maxIdleSeconds={}", config.getMaxIdleSeconds());
+                  } finally {
+                    config.getLoggingContext().keySet().forEach(MDC::remove);
+                  }
 
                   ctx.fireEvent(new Event.ChannelIdle());
                 }

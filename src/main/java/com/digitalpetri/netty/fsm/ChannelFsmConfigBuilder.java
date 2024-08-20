@@ -10,6 +10,9 @@
 
 package com.digitalpetri.netty.fsm;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,7 +29,9 @@ public class ChannelFsmConfigBuilder {
   private ChannelActions channelActions;
   private Executor executor;
   private Scheduler scheduler;
-  private Object context;
+  private String loggerName;
+  private Map<String, String> loggingContext = Collections.emptyMap();
+  private Object userContext;
 
   /**
    * @param lazy {@code true} if the ChannelFsm should be lazy,
@@ -111,12 +116,38 @@ public class ChannelFsmConfigBuilder {
   }
 
   /**
-   * @param context the user-configurable context associated with this ChannelFsm.
+   * @param loggerName the logger name the FSM should use.
    * @return this {@link ChannelFsmConfigBuilder}.
-   * @see ChannelFsmConfig#getContext()
+   * @see ChannelFsmConfig#getLoggerName()
    */
-  public ChannelFsmConfigBuilder setContext(Object context) {
-    this.context = context;
+  public ChannelFsmConfigBuilder setLoggerName(String loggerName) {
+    this.loggerName = loggerName;
+    return this;
+  }
+
+  /**
+   * Set the logging context Map a {@link ChannelFsm} instance will use.
+   *
+   * <p>Keys and values in the Map will be set on the SLF4J {@link org.slf4j.MDC} when logging.
+   *
+   * <p>This method makes a defensive copy of {@code loggingContext}.
+   *
+   * @param loggingContext the logging context Map a {@link ChannelFsm} instance will use.
+   * @return this {@link ChannelFsmConfigBuilder}
+   * @see ChannelFsmConfig#getLoggingContext()
+   */
+  public ChannelFsmConfigBuilder setLoggingContext(Map<String, String> loggingContext) {
+    this.loggingContext = new ConcurrentHashMap<>(loggingContext);
+    return this;
+  }
+
+  /**
+   * @param userContext the user-configurable context associated with this ChannelFsm.
+   * @return this {@link ChannelFsmConfigBuilder}.
+   * @see ChannelFsmConfig#getUserContext()
+   */
+  public ChannelFsmConfigBuilder setUserContext(Object userContext) {
+    this.userContext = userContext;
     return this;
   }
 
@@ -133,6 +164,9 @@ public class ChannelFsmConfigBuilder {
     if (scheduler == null) {
       scheduler = SharedScheduler.INSTANCE;
     }
+    if (loggerName == null) {
+      loggerName = ChannelFsm.class.getName();
+    }
 
     return new ChannelFsmConfigImpl(
         lazy,
@@ -142,7 +176,9 @@ public class ChannelFsmConfigBuilder {
         channelActions,
         executor,
         scheduler,
-        context
+        loggerName,
+        loggingContext,
+        userContext
     );
   }
 
@@ -166,7 +202,9 @@ public class ChannelFsmConfigBuilder {
     private final ChannelActions channelActions;
     private final Executor executor;
     private final Scheduler scheduler;
-    private final Object context;
+    private final String loggerName;
+    private final Map<String, String> loggingContext;
+    private final Object userContext;
 
     ChannelFsmConfigImpl(
         boolean lazy,
@@ -176,7 +214,9 @@ public class ChannelFsmConfigBuilder {
         ChannelActions channelActions,
         Executor executor,
         Scheduler scheduler,
-        Object context
+        String loggerName,
+        Map<String, String> loggingContext,
+        Object userContext
     ) {
 
       this.lazy = lazy;
@@ -186,7 +226,9 @@ public class ChannelFsmConfigBuilder {
       this.channelActions = channelActions;
       this.executor = executor;
       this.scheduler = scheduler;
-      this.context = context;
+      this.loggerName = loggerName;
+      this.loggingContext = loggingContext;
+      this.userContext = userContext;
     }
 
     @Override
@@ -225,8 +267,18 @@ public class ChannelFsmConfigBuilder {
     }
 
     @Override
-    public Object getContext() {
-      return context;
+    public String getLoggerName() {
+      return loggerName;
+    }
+
+    @Override
+    public Map<String, String> getLoggingContext() {
+      return loggingContext;
+    }
+
+    @Override
+    public Object getUserContext() {
+      return userContext;
     }
 
   }
