@@ -59,7 +59,7 @@
     <dependency>
       <groupId>com.digitalpetri.fsm</groupId>
       <artifactId>strict-machine</artifactId>
-      <version>1.0.0-RC1</version>
+      <version>1.0.0-RC2</version>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
