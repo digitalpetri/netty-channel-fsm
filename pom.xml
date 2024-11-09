@@ -6,7 +6,7 @@
 
   <groupId>com.digitalpetri.netty</groupId>
   <artifactId>netty-channel-fsm</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1-SNAPSHOT</version>
   
   <name>Netty Channel FSM</name>
   <description>
