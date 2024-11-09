@@ -10,7 +10,7 @@ Once connected, the state machine works to keep the Channel connected until `dis
 ## Gradle
 ```
 dependencies {
-    compile("com.digitalpetri.netty:netty-channel-fsm:0.8")
+    compile("com.digitalpetri.netty:netty-channel-fsm:1.0.0")
 }
 ```
 
@@ -20,7 +20,7 @@ dependencies {
     <dependency>
       <groupId>com.digitalpetri.netty</groupId>
       <artifactId>netty-channel-fsm</artifactId>
-      <version>0.8</version>
+      <version>1.0.0</version>
     </dependency>
 </dependencies>
 ```
