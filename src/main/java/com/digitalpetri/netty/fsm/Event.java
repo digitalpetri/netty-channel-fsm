@@ -33,7 +33,7 @@ public interface Event {
 
   class Connect implements Event {
 
-    final CompletableFuture<Channel> channelFuture = new CompletableFuture<>();
+    public final CompletableFuture<Channel> channelFuture = new CompletableFuture<>();
 
     @Override
     public String toString() {
@@ -43,7 +43,7 @@ public interface Event {
 
   class ConnectSuccess implements Event {
 
-    final Channel channel;
+    public final Channel channel;
 
     public ConnectSuccess(Channel channel) {
       this.channel = channel;
@@ -57,7 +57,7 @@ public interface Event {
 
   class ConnectFailure implements Event {
 
-    final Throwable failure;
+    public final Throwable failure;
 
     public ConnectFailure(Throwable failure) {
       this.failure = failure;
@@ -71,7 +71,7 @@ public interface Event {
 
   class Disconnect implements Event {
 
-    final CompletableFuture<Void> disconnectFuture = new CompletableFuture<>();
+    public final CompletableFuture<Void> disconnectFuture = new CompletableFuture<>();
 
     @Override
     public String toString() {
@@ -89,9 +89,9 @@ public interface Event {
 
   class GetChannel implements Event {
 
-    final CompletableFuture<Channel> channelFuture = new CompletableFuture<>();
+    public final CompletableFuture<Channel> channelFuture = new CompletableFuture<>();
 
-    final boolean waitForReconnect;
+    public final boolean waitForReconnect;
 
     GetChannel() {
       this(true);
@@ -109,7 +109,7 @@ public interface Event {
 
   class KeepAliveFailure implements Event {
 
-    final Throwable failure;
+    public final Throwable failure;
 
     KeepAliveFailure(Throwable failure) {
       this.failure = failure;
