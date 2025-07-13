@@ -184,13 +184,27 @@ public class ChannelFsmConfigBuilder {
 
   private static class SharedExecutor {
 
-    private static final ExecutorService INSTANCE = Executors.newSingleThreadExecutor();
+    private static final ExecutorService INSTANCE =
+        Executors.newSingleThreadExecutor(
+            r -> {
+              Thread t = Executors.defaultThreadFactory().newThread(r);
+              t.setName("channel-fsm-shared-executor");
+              t.setDaemon(true);
+              return t;
+            });
   }
 
   private static class SharedScheduler {
 
     private static final Scheduler INSTANCE =
-        Scheduler.fromScheduledExecutor(Executors.newSingleThreadScheduledExecutor());
+        Scheduler.fromScheduledExecutor(
+            Executors.newSingleThreadScheduledExecutor(
+                r -> {
+                  Thread t = Executors.defaultThreadFactory().newThread(r);
+                  t.setName("channel-fsm-shared-scheduler");
+                  t.setDaemon(true);
+                  return t;
+                }));
   }
 
   private static class ChannelFsmConfigImpl implements ChannelFsmConfig {
