@@ -47,10 +47,10 @@
 
     <!-- Test Dependencies -->
     <junit.version>5.10.2</junit.version>
-    <kotlin.version>2.0.10</kotlin.version>
+    <kotlin.version>2.2.0</kotlin.version>
 
     <!-- Plugin Dependencies -->
-    <checkstyle.version>10.17.0</checkstyle.version>
+    <checkstyle.version>10.26.1</checkstyle.version>
     <maven-checkstyle-plugin.version>3.4.0</maven-checkstyle-plugin.version>
     <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
   </properties>
@@ -64,7 +64,7 @@
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-handler</artifactId>
-      <version>4.1.112.Final</version>
+      <version>4.1.122.Final</version>
     </dependency>
 
     <dependency>
@@ -291,6 +291,21 @@
             <version>${checkstyle.version}</version>
           </dependency>
         </dependencies>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>versions-maven-plugin</artifactId>
+        <version>2.18.0</version>
+        <configuration>
+          <ruleSet>
+            <ignoreVersions>
+              <ignoreVersion>
+                <type>regex</type>
+                <version>(?i).*[-_\.](alpha|b|beta|rc|m|ea)[-_\.]?[0-9]*</version>
+              </ignoreVersion>
+            </ignoreVersions>
+          </ruleSet>
+        </configuration>
       </plugin>
     </plugins>
   </build>
