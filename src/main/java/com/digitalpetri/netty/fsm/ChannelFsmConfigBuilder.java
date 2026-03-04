@@ -159,10 +159,10 @@ public class ChannelFsmConfigBuilder {
       maxReconnectDelaySeconds = DEFAULT_MAX_RECONNECT_DELAY_SECONDS;
     }
     if (executor == null) {
-      executor = SharedExecutor.INSTANCE;
+      executor = SharedExecutor.build();
     }
     if (scheduler == null) {
-      scheduler = SharedScheduler.INSTANCE;
+      scheduler = SharedScheduler.build();
     }
     if (loggerName == null) {
       loggerName = ChannelFsm.class.getName();
@@ -184,27 +184,29 @@ public class ChannelFsmConfigBuilder {
 
   private static class SharedExecutor {
 
-    private static final ExecutorService INSTANCE =
-        Executors.newSingleThreadExecutor(
-            r -> {
-              Thread t = Executors.defaultThreadFactory().newThread(r);
-              t.setName("channel-fsm-shared-executor");
-              t.setDaemon(true);
-              return t;
-            });
+    private static final ExecutorService build() {
+      return Executors.newSingleThreadExecutor(
+          r -> {
+            Thread t = Executors.defaultThreadFactory().newThread(r);
+            t.setName("channel-fsm-shared-executor");
+            t.setDaemon(true);
+            return t;
+          });
+    }
   }
 
   private static class SharedScheduler {
 
-    private static final Scheduler INSTANCE =
-        Scheduler.fromScheduledExecutor(
-            Executors.newSingleThreadScheduledExecutor(
-                r -> {
-                  Thread t = Executors.defaultThreadFactory().newThread(r);
-                  t.setName("channel-fsm-shared-scheduler");
-                  t.setDaemon(true);
-                  return t;
-                }));
+    private static final Scheduler build() {
+      return Scheduler.fromScheduledExecutor(
+        Executors.newSingleThreadScheduledExecutor(
+            r -> {
+              Thread t = Executors.defaultThreadFactory().newThread(r);
+              t.setName("channel-fsm-shared-scheduler");
+              t.setDaemon(true);
+              return t;
+            }));
+    }
   }
 
   private static class ChannelFsmConfigImpl implements ChannelFsmConfig {
