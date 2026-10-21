@@ -579,16 +579,15 @@ public class ChannelFsmFactory {
 
     ConnectFuture connectFuture = KEY_CF.get(ctx);
 
-    if (connectFuture != null && connectFuture.future.isDone()) {
-      config.getExecutor().execute(() -> {
-        CompletableFuture<Void> disconnectFuture = config.getChannelActions().disconnect(
-            ctx,
-            connectFuture.future.getNow(null)
-        );
-
-        disconnectFuture.whenComplete(
-            (v, ex) -> ctx.fireEvent(new Event.DisconnectSuccess()));
-      });
+    if (connectFuture != null) {
+      // The Connected transition publishes the channel on the executor. A shelved Disconnect
+      // can run before that task, so wait for the channel rather than skipping its close.
+      connectFuture.future
+          .thenComposeAsync(
+              channel -> config.getChannelActions().disconnect(ctx, channel),
+              config.getExecutor()
+          )
+          .whenComplete((v, ex) -> ctx.fireEvent(new Event.DisconnectSuccess()));
     } else {
       ctx.fireEvent(new Event.DisconnectSuccess());
     }
