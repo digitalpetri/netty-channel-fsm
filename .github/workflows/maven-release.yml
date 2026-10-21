@@ -2,13 +2,63 @@ name: Maven Release
 
 on:
   release:
-    types: [ created ]
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+      failed_deployment:
+        description: Failed Central deployment ID when retrying a rejected bundle
+        required: false
+        type: string
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Check failed deployment before retrying
+        if: github.event_name == 'workflow_dispatch' && inputs.failed_deployment != ''
+        env:
+          DEPLOYMENT_ID: ${{ inputs.failed_deployment }}
+          MAVEN_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
+        run: |
+          python3 - <<'PYTHON'
+          import base64
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          deployment_id = os.environ['DEPLOYMENT_ID']
+          credentials = os.environ['MAVEN_USERNAME'] + ':' + os.environ['MAVEN_PASSWORD']
+          token = base64.b64encode(credentials.encode()).decode()
+          url = 'https://central.sonatype.com/api/v1/publisher/status?'
+          url += urllib.parse.urlencode({'id': deployment_id})
+          request = urllib.request.Request(url, method='POST')
+          request.add_header('Authorization', 'Bearer ' + token)
+          with urllib.request.urlopen(request, timeout=60) as response:
+              status = json.load(response)
+          print(json.dumps({key: status.get(key) for key in
+                            ('deploymentId', 'deploymentState', 'errors')}))
+          if status.get('deploymentId') != deployment_id or status.get('deploymentState') != 'FAILED':
+              raise SystemExit('The previous deployment must be FAILED before retrying')
+          PYTHON
+
+      - name: Set up Maven 3.9.16
+        run: |
+          curl --fail --silent --show-error --location \
+            https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.16/apache-maven-3.9.16-bin.tar.gz \
+            --output "$RUNNER_TEMP/apache-maven-3.9.16-bin.tar.gz"
+          echo "831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6  $RUNNER_TEMP/apache-maven-3.9.16-bin.tar.gz" | sha512sum --check
+          tar -xzf "$RUNNER_TEMP/apache-maven-3.9.16-bin.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-3.9.16/bin" >> "$GITHUB_PATH"
 
       - name: Set up Maven Central Repository
         uses: actions/setup-java@v4
@@ -25,7 +75,9 @@ jobs:
           gpg --list-secret-keys --keyid-format LONG
 
       - name: Publish to Maven Central
-        run: mvn -B clean deploy -P release
+        run: |
+          mvn --version
+          mvn -B clean deploy -P release
         env:
           MAVEN_USERNAME: ${{ secrets.CENTRAL_SONATYPE_TOKEN_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.CENTRAL_SONATYPE_TOKEN_PASSWORD }}
