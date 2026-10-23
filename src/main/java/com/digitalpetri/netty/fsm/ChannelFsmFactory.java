@@ -236,30 +236,28 @@ public class ChannelFsmFactory {
                 .addFirst(new IdleStateHandler(config.getMaxIdleSeconds(), 0, 0));
           }
 
-          channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
-            @Override
-            public void channelInactive(
-                ChannelHandlerContext channelContext
-            ) throws Exception {
-
-              config.getLoggingContext().forEach(MDC::put);
-              try {
-                logger.debug(
-                    "channelInactive() local={}, remote={}",
-                    channelContext.channel().localAddress(),
-                    channelContext.channel().remoteAddress()
-                );
-              } finally {
-                config.getLoggingContext().keySet().forEach(MDC::remove);
-              }
-
-              if (ctx.currentState() == State.Connected) {
-                ctx.fireEvent(new Event.ChannelInactive());
-              }
-
-              super.channelInactive(channelContext);
+          // The channel can close before this action runs: the event loop may process the peer's
+          // FIN, delivered together with the last handshake message, before the executor gets to
+          // ConnectSuccess. A handler added after that never sees channelInactive, but a
+          // closeFuture listener is notified even when it's added after the close.
+          channel.closeFuture().addListener(future -> {
+            config.getLoggingContext().forEach(MDC::put);
+            try {
+              logger.debug(
+                  "channel closed, local={}, remote={}",
+                  channel.localAddress(),
+                  channel.remoteAddress()
+              );
+            } finally {
+              config.getLoggingContext().keySet().forEach(MDC::remove);
             }
 
+            if (ctx.currentState() == State.Connected) {
+              ctx.fireEvent(new Event.ChannelInactive());
+            }
+          });
+
+          channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
             @Override
             public void exceptionCaught(
                 ChannelHandlerContext channelContext,
