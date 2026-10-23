@@ -284,9 +284,9 @@ public class ChannelFsmFactory {
                 config.getLoggingContext().keySet().forEach(MDC::remove);
               }
 
-              if (ctx.currentState() == State.Connected) {
-                channelContext.close();
-              }
+              // Close whatever the FSM's state: the FSM is done with this channel or is about to
+              // be, and the event loop must not wait for the FSM's lock to check.
+              channelContext.close();
             }
 
             @Override

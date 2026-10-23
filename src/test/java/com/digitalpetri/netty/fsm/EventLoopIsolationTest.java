@@ -25,6 +25,7 @@ import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalServerChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
+import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -112,6 +113,42 @@ class EventLoopIsolationTest {
       assertTrue(listenerRunning.await(5, TimeUnit.SECONDS));
 
       channel.close();
+      boolean eventLoopRan = channel.eventLoop()
+          .submit(() -> { })
+          .await(1, TimeUnit.SECONDS);
+
+      assertTrue(eventLoopRan, "the event loop must not wait for the FSM");
+    } finally {
+      releaseListener.countDown();
+    }
+
+    FsmTestSupport.assertEventualState(fsm, State.ReconnectWait);
+  }
+
+  @Test
+  @DisplayName("A slow TransitionListener does not block the event loop when the channel fails")
+  void slowListenerDoesNotBlockEventLoopOnException() throws Exception {
+    ChannelFsm fsm = newFsm();
+    Channel channel = fsm.connect().get(5, TimeUnit.SECONDS);
+
+    var listenerRunning = new CountDownLatch(1);
+    var releaseListener = new CountDownLatch(1);
+    fsm.addTransitionListener((from, to, via) -> {
+      if (from == State.Connected && via instanceof Event.Connect) {
+        listenerRunning.countDown();
+        try {
+          releaseListener.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
+    });
+
+    try {
+      fsm.connect();
+      assertTrue(listenerRunning.await(5, TimeUnit.SECONDS));
+
+      channel.pipeline().fireExceptionCaught(new IOException("connection reset"));
       boolean eventLoopRan = channel.eventLoop()
           .submit(() -> { })
           .await(1, TimeUnit.SECONDS);
