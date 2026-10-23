@@ -376,6 +376,8 @@ public class ChannelFsmFactory {
       ChannelFsmConfig config
   ) {
 
+    final Logger logger = LoggerFactory.getLogger(config.getLoggerName());
+
     // ScheduledFuture.cancel(false) can't stop a timer that has already started, so a timer from
     // an earlier wait can fire during this one. Its event only ends the wait that scheduled it.
     fb.addTransition(new Transition<>() {
@@ -419,12 +421,27 @@ public class ChannelFsmFactory {
           }
           KEY_RD.set(ctx, delay);
 
-          Cancellable reconnectDelayFuture = config.getScheduler().schedule(
-              () ->
-                  ctx.fireEvent(new Event.ReconnectDelayElapsed(cf)),
-              delay,
-              TimeUnit.SECONDS
-          );
+          Cancellable reconnectDelayFuture;
+          try {
+            reconnectDelayFuture = config.getScheduler().schedule(
+                () ->
+                    ctx.fireEvent(new Event.ReconnectDelayElapsed(cf)),
+                delay,
+                TimeUnit.SECONDS
+            );
+          } catch (RuntimeException e) {
+            // Nothing would end this wait, and every getChannel() would wait for it. Give up
+            // instead; reconnecting right away would retry without any delay.
+            config.getLoggingContext().forEach(MDC::put);
+            try {
+              logger.warn("failed to schedule reconnect, disconnecting", e);
+            } finally {
+              config.getLoggingContext().keySet().forEach(MDC::remove);
+            }
+
+            ctx.fireEvent(new Event.Disconnect());
+            return;
+          }
 
           KEY_RDF.set(ctx, reconnectDelayFuture);
         });

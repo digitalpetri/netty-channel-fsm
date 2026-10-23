@@ -18,6 +18,7 @@ import com.digitalpetri.fsm.FsmContext;
 import io.netty.channel.Channel;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -82,6 +83,29 @@ class ReconnectBackoffTest {
 
     assertEquals(2, failingActions.connects.size(), "the second wait has not elapsed");
     assertEquals(State.ReconnectWait, fsm.getState());
+  }
+
+  // e.g. a ScheduledExecutorService that was shut down while the FSM was still reconnecting
+  @Test
+  @DisplayName("A Scheduler that throws does not leave the FSM waiting to reconnect forever")
+  void schedulerThatThrows() {
+    Scheduler rejecting = (command, delay, unit) -> {
+      throw new RejectedExecutionException("scheduler shut down");
+    };
+    ChannelFsmConfig config = stepConfig(executor, rejecting, failingActions).build();
+    ChannelFsm fsm = new ChannelFsmFactory(config).newChannelFsm();
+
+    fsm.connect();
+    executor.drain();
+
+    CompletableFuture<Channel> channel = fsm.getChannel();
+    executor.drain();
+
+    assertTrue(
+        channel.isCompletedExceptionally(),
+        "getChannel() must not wait for a reconnect that was never scheduled"
+    );
+    assertEquals(State.NotConnected, fsm.getState());
   }
 
   private List<Long> delaysWithMax(int maxReconnectDelaySeconds) {
