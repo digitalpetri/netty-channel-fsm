@@ -746,14 +746,15 @@ public class ChannelFsmFactory {
     }
   }
 
-  private static int getMaxReconnectDelay(ChannelFsmConfig config) {
+  private static long getMaxReconnectDelay(ChannelFsmConfig config) {
     int maxReconnectDelay = config.getMaxReconnectDelaySeconds();
 
     if (maxReconnectDelay < 1) {
       maxReconnectDelay = ChannelFsmConfigBuilder.DEFAULT_MAX_RECONNECT_DELAY_SECONDS;
     }
 
-    int highestOneBit = Integer.highestOneBit(maxReconnectDelay);
+    // long, so rounding a value above 2^30 up to 2^31 doesn't overflow
+    long highestOneBit = Integer.highestOneBit(maxReconnectDelay);
 
     if (maxReconnectDelay == highestOneBit) {
       return maxReconnectDelay;
