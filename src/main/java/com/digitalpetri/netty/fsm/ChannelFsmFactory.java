@@ -19,6 +19,7 @@ import static com.digitalpetri.netty.fsm.CompletionBuilders.completeAsync;
 import com.digitalpetri.fsm.FsmContext;
 import com.digitalpetri.fsm.dsl.ActionContext;
 import com.digitalpetri.fsm.dsl.FsmBuilder;
+import com.digitalpetri.fsm.dsl.Transition;
 import com.digitalpetri.netty.fsm.ChannelFsm.ConnectFuture;
 import com.digitalpetri.netty.fsm.ChannelFsm.DisconnectFuture;
 import com.digitalpetri.netty.fsm.Scheduler.Cancellable;
@@ -210,19 +211,23 @@ public class ChannelFsmFactory {
         .on(Event.Disconnect.class)
         .transitionTo(State.Disconnecting);
 
-    if (config.isLazy()) {
-      fb.when(State.Connected)
-          .on(e ->
-              e.getClass() == Event.ChannelInactive.class
-                  || e.getClass() == Event.KeepAliveFailure.class)
-          .transitionTo(State.Idle);
-    } else {
-      fb.when(State.Connected)
-          .on(e ->
-              e.getClass() == Event.ChannelInactive.class
-                  || e.getClass() == Event.KeepAliveFailure.class)
-          .transitionTo(State.ReconnectWait);
-    }
+    // A channel's close or keep-alive failure can arrive after the FSM has left that connection
+    // and connected another one, e.g. when SslHandler holds the close until close_notify is
+    // flushed, or when a keep-alive request times out. Such an event only ends the connection it
+    // came from, which is checked when the event is evaluated.
+    State connectionLostTarget = config.isLazy() ? State.Idle : State.ReconnectWait;
+
+    fb.addTransition(new Transition<>() {
+      @Override
+      public State target() {
+        return connectionLostTarget;
+      }
+
+      @Override
+      public boolean matches(FsmContext<State, Event> ctx, State state, Event event) {
+        return state == State.Connected && isConnectionLost(ctx, event);
+      }
+    });
 
     fb.onTransitionTo(State.Connected)
         .from(s -> s != State.Connected)
@@ -230,6 +235,7 @@ public class ChannelFsmFactory {
         .execute(ctx -> {
           Event.ConnectSuccess event = (Event.ConnectSuccess) ctx.event();
           Channel channel = event.channel;
+          ConnectFuture cf = KEY_CF.get(ctx);
 
           if (config.getMaxIdleSeconds() > 0) {
             channel.pipeline()
@@ -240,6 +246,10 @@ public class ChannelFsmFactory {
           // FIN, delivered together with the last handshake message, before the executor gets to
           // ConnectSuccess. A handler added after that never sees channelInactive, but a
           // closeFuture listener is notified even when it's added after the close.
+          //
+          // The listener runs on the event loop, which must not wait for the FSM's lock, so it
+          // doesn't check the FSM's state. The FSM ignores the event unless it's still connected
+          // with this channel.
           channel.closeFuture().addListener(future -> {
             config.getLoggingContext().forEach(MDC::put);
             try {
@@ -252,9 +262,7 @@ public class ChannelFsmFactory {
               config.getLoggingContext().keySet().forEach(MDC::remove);
             }
 
-            if (ctx.currentState() == State.Connected) {
-              ctx.fireEvent(new Event.ChannelInactive());
-            }
+            ctx.fireEvent(new Event.ChannelInactive(cf));
           });
 
           channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
@@ -298,7 +306,7 @@ public class ChannelFsmFactory {
                     config.getLoggingContext().keySet().forEach(MDC::remove);
                   }
 
-                  ctx.fireEvent(new Event.ChannelIdle());
+                  ctx.fireEvent(new Event.ChannelIdle(cf));
                 }
               }
 
@@ -306,7 +314,6 @@ public class ChannelFsmFactory {
             }
           });
 
-          ConnectFuture cf = KEY_CF.get(ctx);
           if (cf != null) {
             config.getExecutor().execute(() -> cf.future.complete(channel));
           }
@@ -323,6 +330,12 @@ public class ChannelFsmFactory {
     fb.onInternalTransition(State.Connected)
         .via(Event.ChannelIdle.class)
         .execute(ctx -> {
+          // A channel the FSM has left behind can still go idle, e.g. while its close is held.
+          Event.ChannelIdle event = (Event.ChannelIdle) ctx.event();
+          if (!isCurrent(ctx, event.connectFuture)) {
+            return;
+          }
+
           ConnectFuture cf = KEY_CF.get(ctx);
 
           cf.future.thenAcceptAsync(ch -> {
@@ -331,7 +344,7 @@ public class ChannelFsmFactory {
 
             keepAliveFuture.whenComplete((v, ex) -> {
               if (ex != null) {
-                ctx.fireEvent(new Event.KeepAliveFailure(ex));
+                ctx.fireEvent(new Event.KeepAliveFailure(ex, cf));
               }
             });
           }, config.getExecutor());
@@ -589,6 +602,40 @@ public class ChannelFsmFactory {
     } else {
       ctx.fireEvent(new Event.DisconnectSuccess());
     }
+  }
+
+  /**
+   * Check whether {@code event} ends the current connection: a ChannelInactive or
+   * KeepAliveFailure from the current connection, or one that doesn't name a connection.
+   *
+   * @param ctx the {@link FsmContext}.
+   * @param event the event being evaluated.
+   * @return {@code true} if {@code event} ends the current connection.
+   */
+  private static boolean isConnectionLost(FsmContext<State, Event> ctx, Event event) {
+    ConnectFuture source;
+
+    if (event.getClass() == Event.ChannelInactive.class) {
+      source = ((Event.ChannelInactive) event).connectFuture;
+    } else if (event.getClass() == Event.KeepAliveFailure.class) {
+      source = ((Event.KeepAliveFailure) event).connectFuture;
+    } else {
+      return false;
+    }
+
+    return isCurrent(ctx, source);
+  }
+
+  /**
+   * Check whether an event that names the ConnectFuture it came from belongs to the current
+   * connection. An event that names none, e.g. one fired at the FSM directly, does.
+   *
+   * @param ctx the {@link FsmContext}.
+   * @param source the ConnectFuture the event came from, or {@code null}.
+   * @return {@code true} if the event belongs to the current connection.
+   */
+  private static boolean isCurrent(FsmContext<State, Event> ctx, ConnectFuture source) {
+    return source == null || source == KEY_CF.get(ctx);
   }
 
   private static void handleConnectEvent(

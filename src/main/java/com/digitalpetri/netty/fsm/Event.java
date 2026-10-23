@@ -17,6 +17,20 @@ public interface Event {
 
   class ChannelIdle implements Event {
 
+    /**
+     * The ConnectFuture of the connection whose channel went idle, or {@code null} if this event
+     * applies to the current connection.
+     */
+    final ChannelFsm.ConnectFuture connectFuture;
+
+    public ChannelIdle() {
+      this(null);
+    }
+
+    ChannelIdle(ChannelFsm.ConnectFuture connectFuture) {
+      this.connectFuture = connectFuture;
+    }
+
     @Override
     public String toString() {
       return getClass().getSimpleName();
@@ -24,6 +38,20 @@ public interface Event {
   }
 
   class ChannelInactive implements Event {
+
+    /**
+     * The ConnectFuture of the connection whose channel closed, or {@code null} if this event
+     * applies to the current connection.
+     */
+    final ChannelFsm.ConnectFuture connectFuture;
+
+    public ChannelInactive() {
+      this(null);
+    }
+
+    ChannelInactive(ChannelFsm.ConnectFuture connectFuture) {
+      this.connectFuture = connectFuture;
+    }
 
     @Override
     public String toString() {
@@ -111,8 +139,19 @@ public interface Event {
 
     public final Throwable failure;
 
+    /**
+     * The ConnectFuture of the connection the keep-alive was sent on, or {@code null} if this
+     * event applies to the current connection.
+     */
+    final ChannelFsm.ConnectFuture connectFuture;
+
     KeepAliveFailure(Throwable failure) {
+      this(failure, null);
+    }
+
+    KeepAliveFailure(Throwable failure, ChannelFsm.ConnectFuture connectFuture) {
       this.failure = failure;
+      this.connectFuture = connectFuture;
     }
 
     @Override
