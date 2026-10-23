@@ -521,17 +521,33 @@ public class ChannelFsmFactory {
     // The ConnectFuture of the connection this attempt is for.
     ConnectFuture cf = KEY_CF.get(ctx);
 
-    config.getExecutor().execute(() ->
-        config.getChannelActions().connect(ctx).whenComplete((channel, ex) -> {
-          if (channel != null) {
-            addHandlers(ctx, config, channel, cf);
+    config.getExecutor().execute(() -> {
+      // Only ConnectSuccess or ConnectFailure ends a connect attempt, and Disconnect waits for
+      // the attempt to end, so turn a connect() that throws or returns null into a failure.
+      CompletableFuture<Channel> connectFuture;
+      try {
+        connectFuture = config.getChannelActions().connect(ctx);
+      } catch (Throwable t) {
+        connectFuture = CompletableFuture.failedFuture(t);
+      }
+      if (connectFuture == null) {
+        connectFuture = CompletableFuture.failedFuture(
+            new NullPointerException("ChannelActions.connect returned null"));
+      }
 
-            ctx.fireEvent(new Event.ConnectSuccess(channel));
-          } else {
-            ctx.fireEvent(new Event.ConnectFailure(ex));
-          }
-        })
-    );
+      connectFuture.whenComplete((channel, ex) -> {
+        if (channel != null) {
+          addHandlers(ctx, config, channel, cf);
+
+          ctx.fireEvent(new Event.ConnectSuccess(channel));
+        } else if (ex != null) {
+          ctx.fireEvent(new Event.ConnectFailure(ex));
+        } else {
+          ctx.fireEvent(new Event.ConnectFailure(
+              new IllegalStateException("ChannelActions.connect completed without a Channel")));
+        }
+      });
+    });
   }
 
   /**
