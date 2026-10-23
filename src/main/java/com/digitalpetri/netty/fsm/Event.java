@@ -162,6 +162,20 @@ public interface Event {
 
   class ReconnectDelayElapsed implements Event {
 
+    /**
+     * The ConnectFuture of the wait that scheduled this event, or {@code null} if this event
+     * applies to the current wait.
+     */
+    final ChannelFsm.ConnectFuture connectFuture;
+
+    public ReconnectDelayElapsed() {
+      this(null);
+    }
+
+    ReconnectDelayElapsed(ChannelFsm.ConnectFuture connectFuture) {
+      this.connectFuture = connectFuture;
+    }
+
     @Override
     public String toString() {
       return getClass().getSimpleName();

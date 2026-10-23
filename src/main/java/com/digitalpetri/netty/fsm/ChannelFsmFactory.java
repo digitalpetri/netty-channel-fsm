@@ -376,9 +376,21 @@ public class ChannelFsmFactory {
       ChannelFsmConfig config
   ) {
 
-    fb.when(State.ReconnectWait)
-        .on(Event.ReconnectDelayElapsed.class)
-        .transitionTo(State.Reconnecting);
+    // ScheduledFuture.cancel(false) can't stop a timer that has already started, so a timer from
+    // an earlier wait can fire during this one. Its event only ends the wait that scheduled it.
+    fb.addTransition(new Transition<>() {
+      @Override
+      public State target() {
+        return State.Reconnecting;
+      }
+
+      @Override
+      public boolean matches(FsmContext<State, Event> ctx, State state, Event event) {
+        return state == State.ReconnectWait
+            && event.getClass() == Event.ReconnectDelayElapsed.class
+            && isCurrent(ctx, ((Event.ReconnectDelayElapsed) event).connectFuture);
+      }
+    });
 
     fb.when(State.ReconnectWait)
         .on(Event.Disconnect.class)
@@ -395,7 +407,9 @@ public class ChannelFsmFactory {
         .from(s -> s != State.ReconnectWait)
         .viaAny()
         .execute(ctx -> {
-          KEY_CF.set(ctx, new ConnectFuture());
+          // The ConnectFuture for the next attempt also identifies this wait.
+          ConnectFuture cf = new ConnectFuture();
+          KEY_CF.set(ctx, cf);
 
           Long delay = KEY_RD.get(ctx);
           if (delay == null) {
@@ -407,7 +421,7 @@ public class ChannelFsmFactory {
 
           Cancellable reconnectDelayFuture = config.getScheduler().schedule(
               () ->
-                  ctx.fireEvent(new Event.ReconnectDelayElapsed()),
+                  ctx.fireEvent(new Event.ReconnectDelayElapsed(cf)),
               delay,
               TimeUnit.SECONDS
           );
@@ -698,11 +712,11 @@ public class ChannelFsmFactory {
 
   /**
    * Check whether an event that names the ConnectFuture it came from belongs to the current
-   * connection. An event that names none, e.g. one fired at the FSM directly, does.
+   * connection or wait. An event that names none, e.g. one fired at the FSM directly, does.
    *
    * @param ctx the {@link FsmContext}.
    * @param source the ConnectFuture the event came from, or {@code null}.
-   * @return {@code true} if the event belongs to the current connection.
+   * @return {@code true} if the event belongs to the current connection or wait.
    */
   private static boolean isCurrent(FsmContext<State, Event> ctx, ConnectFuture source) {
     return source == null || source == KEY_CF.get(ctx);

@@ -12,6 +12,7 @@ package com.digitalpetri.netty.fsm;
 
 import static com.digitalpetri.netty.fsm.FsmTestSupport.stepConfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.digitalpetri.fsm.FsmContext;
 import io.netty.channel.Channel;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
 class ReconnectBackoffTest {
 
   private final QueuedExecutor executor = new QueuedExecutor();
+  private final ManualScheduler scheduler = new ManualScheduler();
 
   private final RecordingChannelActions failingActions = new RecordingChannelActions() {
     @Override
@@ -49,6 +51,37 @@ class ReconnectBackoffTest {
   void backoffAboveLargestPowerOfTwo() {
     assertEquals(List.of(1L, 2L, 4L, 8L, 16L, 32L), delaysWithMax((1 << 30) + 1));
     assertEquals(List.of(1L, 2L, 4L, 8L, 16L, 32L), delaysWithMax(Integer.MAX_VALUE));
+  }
+
+  // ScheduledFuture.cancel(false) returns true for a task that has already started, and the task
+  // keeps running, so its ReconnectDelayElapsed can arrive during a later ReconnectWait.
+  @Test
+  @DisplayName("A ReconnectDelayElapsed from an earlier wait does not end the current wait")
+  void staleReconnectDelayElapsed() {
+    ChannelFsmConfig config = stepConfig(executor, scheduler, failingActions).build();
+    ChannelFsm fsm = new ChannelFsmFactory(config).newChannelFsm();
+
+    fsm.connect();
+    executor.drain();
+    assertEquals(State.ReconnectWait, fsm.getState());
+    final ManualScheduler.Scheduled firstWait = scheduler.all().get(0);
+
+    fsm.disconnect();
+    executor.drain();
+    assertEquals(State.NotConnected, fsm.getState());
+    assertTrue(firstWait.isCancelled());
+
+    fsm.connect();
+    executor.drain();
+    assertEquals(State.ReconnectWait, fsm.getState());
+    assertEquals(2, failingActions.connects.size());
+
+    // The first wait's timer was already running when disconnect() cancelled it.
+    firstWait.run();
+    executor.drain();
+
+    assertEquals(2, failingActions.connects.size(), "the second wait has not elapsed");
+    assertEquals(State.ReconnectWait, fsm.getState());
   }
 
   private List<Long> delaysWithMax(int maxReconnectDelaySeconds) {
