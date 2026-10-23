@@ -135,7 +135,9 @@ public class ChannelFsm {
 
         assert cf != null;
 
-        return cf.future;
+        // A copy, so a caller that cancels, times out, or completes the returned future can't
+        // change the channel the FSM uses for keep-alive and disconnect.
+        return cf.future.copy();
       } else {
         return null;
       }
