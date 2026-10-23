@@ -14,6 +14,7 @@ import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_CF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_DF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RD;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RDF;
+import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RS;
 import static com.digitalpetri.netty.fsm.CompletionBuilders.completeAsync;
 
 import com.digitalpetri.fsm.FsmContext;
@@ -177,22 +178,36 @@ public class ChannelFsmFactory {
           connect(ctx, config);
         });
 
+    // Disconnect waits for the connect attempt to end. Requests made after it wait too, so they
+    // take effect in the order they were made.
     fb.onInternalTransition(State.Connecting)
         .via(Event.Connect.class)
-        .execute(ctx -> handleConnectEvent(ctx, config));
+        .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+          } else {
+            handleConnectEvent(ctx, config);
+          }
+        });
 
     fb.onInternalTransition(State.Connecting)
         .via(Event.GetChannel.class)
-        .execute(ctx -> handleGetChannelEvent(ctx, config));
+        .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+          } else {
+            handleGetChannelEvent(ctx, config);
+          }
+        });
 
     fb.onInternalTransition(State.Connecting)
         .via(Event.Disconnect.class)
-        .execute(ctx -> ctx.shelveEvent(ctx.event()));
+        .execute(ChannelFsmFactory::shelveRequest);
 
     fb.onTransitionFrom(State.Connecting)
         .to(s -> s != State.Connecting)
         .viaAny()
-        .execute(FsmContext::processShelvedEvents);
+        .execute(ChannelFsmFactory::processShelvedRequests);
 
     fb.onTransitionFrom(State.Connecting)
         .to(s -> s != State.Connecting)
@@ -338,13 +353,20 @@ public class ChannelFsmFactory {
           disconnect(ctx, config);
         });
 
+    // Connect and GetChannel wait for the disconnect to finish. A Disconnect made after one of
+    // them waits too, so it takes effect after it, in the order the requests were made.
     fb.onInternalTransition(State.Disconnecting)
         .via(e -> e.getClass() == Event.Connect.class || e.getClass() == Event.GetChannel.class)
-        .execute(ctx -> ctx.shelveEvent(ctx.event()));
+        .execute(ChannelFsmFactory::shelveRequest);
 
     fb.onInternalTransition(State.Disconnecting)
         .via(Event.Disconnect.class)
         .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+            return;
+          }
+
           DisconnectFuture df = KEY_DF.get(ctx);
 
           if (df != null) {
@@ -368,7 +390,7 @@ public class ChannelFsmFactory {
     fb.onTransitionFrom(State.Disconnecting)
         .to(s -> s != State.Disconnecting)
         .viaAny()
-        .execute(FsmContext::processShelvedEvents);
+        .execute(ChannelFsmFactory::processShelvedRequests);
   }
 
   private static void configureReconnectWaitState(
@@ -527,22 +549,36 @@ public class ChannelFsmFactory {
           connect(ctx, config);
         });
 
+    // Disconnect waits for the connect attempt to end. Requests made after it wait too, so they
+    // take effect in the order they were made.
     fb.onInternalTransition(State.Reconnecting)
         .via(Event.Connect.class)
-        .execute(ctx -> handleConnectEvent(ctx, config));
+        .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+          } else {
+            handleConnectEvent(ctx, config);
+          }
+        });
 
     fb.onInternalTransition(State.Reconnecting)
         .via(Event.GetChannel.class)
-        .execute(ctx -> handleGetChannelEvent(ctx, config));
+        .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+          } else {
+            handleGetChannelEvent(ctx, config);
+          }
+        });
 
     fb.onInternalTransition(State.Reconnecting)
         .via(Event.Disconnect.class)
-        .execute(ctx -> ctx.shelveEvent(ctx.event()));
+        .execute(ChannelFsmFactory::shelveRequest);
 
     fb.onTransitionFrom(State.Reconnecting)
         .to(s -> s != State.Reconnecting)
         .viaAny()
-        .execute(FsmContext::processShelvedEvents);
+        .execute(ChannelFsmFactory::processShelvedRequests);
 
     fb.onTransitionFrom(State.Reconnecting)
         .to(State.Connected)
@@ -737,6 +773,26 @@ public class ChannelFsmFactory {
    */
   private static boolean isCurrent(FsmContext<State, Event> ctx, ConnectFuture source) {
     return source == null || source == KEY_CF.get(ctx);
+  }
+
+  /**
+   * Shelve the request being evaluated, a Connect, GetChannel, or Disconnect, until the current
+   * state ends, and note that requests made after it must be shelved too.
+   *
+   * @param ctx the {@link ActionContext}.
+   */
+  private static void shelveRequest(ActionContext<State, Event> ctx) {
+    KEY_RS.set(ctx, Boolean.TRUE);
+    ctx.shelveEvent(ctx.event());
+  }
+
+  private static boolean isRequestShelved(FsmContext<State, Event> ctx) {
+    return KEY_RS.get(ctx) != null;
+  }
+
+  private static void processShelvedRequests(FsmContext<State, Event> ctx) {
+    KEY_RS.remove(ctx);
+    ctx.processShelvedEvents();
   }
 
   private static void handleConnectEvent(

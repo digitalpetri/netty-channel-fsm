@@ -194,6 +194,9 @@ public class ChannelFsm {
   static final FsmContext.Key<Cancellable> KEY_RDF =
       new FsmContext.Key<>("reconnectDelayCancellable", Cancellable.class);
 
+  static final FsmContext.Key<Boolean> KEY_RS =
+      new FsmContext.Key<>("requestShelved", Boolean.class);
+
   static class ConnectFuture {
 
     final CompletableFuture<Channel> future = new CompletableFuture<>();
