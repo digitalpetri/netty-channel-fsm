@@ -49,6 +49,26 @@ class ChannelExceptionTest {
     assertEquals(State.ReconnectWait, fsm.getState());
   }
 
+  // The FSM's handler must be in the pipeline once the FSM is CONNECTED, before any executor task
+  // that follows ConnectSuccess has run.
+  @Test
+  @DisplayName("An exception right after CONNECTED is entered closes the channel")
+  void exceptionRightAfterConnectedClosesChannel() {
+    var actions = new RecordingChannelActions();
+    ChannelFsmConfig config = stepConfig(executor, new ManualScheduler(), actions).build();
+    ChannelFsm fsm = new ChannelFsmFactory(config).newChannelFsm();
+
+    fsm.connect();
+    executor.drain();
+    actions.lastConnect().complete(channel);
+    executor.runFirst();
+    assertEquals(State.Connected, fsm.getState());
+
+    channel.pipeline().fireExceptionCaught(new Exception("decoder failed"));
+
+    assertFalse(channel.isOpen());
+  }
+
   // The disconnect action may wait for the peer to close the channel, as Milo's does after
   // sending CloseSecureChannelRequest. An exception in the meantime must not leave it open.
   @Test

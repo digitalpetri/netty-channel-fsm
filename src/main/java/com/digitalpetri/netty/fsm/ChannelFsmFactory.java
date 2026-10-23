@@ -237,11 +237,6 @@ public class ChannelFsmFactory {
           Channel channel = event.channel;
           ConnectFuture cf = KEY_CF.get(ctx);
 
-          if (config.getMaxIdleSeconds() > 0) {
-            channel.pipeline()
-                .addFirst(new IdleStateHandler(config.getMaxIdleSeconds(), 0, 0));
-          }
-
           // The channel can close before this action runs: the event loop may process the peer's
           // FIN, delivered together with the last handshake message, before the executor gets to
           // ConnectSuccess. A handler added after that never sees channelInactive, but a
@@ -263,55 +258,6 @@ public class ChannelFsmFactory {
             }
 
             ctx.fireEvent(new Event.ChannelInactive(cf));
-          });
-
-          channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
-            @Override
-            public void exceptionCaught(
-                ChannelHandlerContext channelContext,
-                Throwable cause
-            ) {
-
-              config.getLoggingContext().forEach(MDC::put);
-              try {
-                logger.debug(
-                    "exceptionCaught() local={}, remote={}",
-                    channelContext.channel().localAddress(),
-                    channelContext.channel().remoteAddress(),
-                    cause
-                );
-              } finally {
-                config.getLoggingContext().keySet().forEach(MDC::remove);
-              }
-
-              // Close whatever the FSM's state: the FSM is done with this channel or is about to
-              // be, and the event loop must not wait for the FSM's lock to check.
-              channelContext.close();
-            }
-
-            @Override
-            public void userEventTriggered(
-                ChannelHandlerContext channelContext,
-                Object evt
-            ) throws Exception {
-
-              if (evt instanceof IdleStateEvent) {
-                IdleState idleState = ((IdleStateEvent) evt).state();
-
-                if (idleState == IdleState.READER_IDLE) {
-                  config.getLoggingContext().forEach(MDC::put);
-                  try {
-                    logger.debug("channel idle, maxIdleSeconds={}", config.getMaxIdleSeconds());
-                  } finally {
-                    config.getLoggingContext().keySet().forEach(MDC::remove);
-                  }
-
-                  ctx.fireEvent(new Event.ChannelIdle(cf));
-                }
-              }
-
-              super.userEventTriggered(channelContext, evt);
-            }
           });
 
           if (cf != null) {
@@ -572,15 +518,108 @@ public class ChannelFsmFactory {
       ChannelFsmConfig config
   ) {
 
+    // The ConnectFuture of the connection this attempt is for.
+    ConnectFuture cf = KEY_CF.get(ctx);
+
     config.getExecutor().execute(() ->
         config.getChannelActions().connect(ctx).whenComplete((channel, ex) -> {
           if (channel != null) {
+            addHandlers(ctx, config, channel, cf);
+
             ctx.fireEvent(new Event.ConnectSuccess(channel));
           } else {
             ctx.fireEvent(new Event.ConnectFailure(ex));
           }
         })
     );
+  }
+
+  /**
+   * Add the FSM's handlers to a newly connected channel.
+   *
+   * <p>This runs before ConnectSuccess is fired, so the handlers are in place by the time the FSM
+   * is Connected, and outside the FSM's lock: DefaultChannelPipeline.destroy() calls
+   * handlerRemoved while it holds the pipeline's lock, and a handler that calls into the FSM there
+   * would deadlock with an FSM action that waits for the pipeline's lock.
+   *
+   * @param ctx the {@link ActionContext}.
+   * @param config the {@link ChannelFsmConfig}.
+   * @param channel the newly connected {@link Channel}.
+   * @param cf the {@link ConnectFuture} of the connection {@code channel} is for.
+   */
+  private static void addHandlers(
+      ActionContext<State, Event> ctx,
+      ChannelFsmConfig config,
+      Channel channel,
+      ConnectFuture cf
+  ) {
+
+    Logger logger = LoggerFactory.getLogger(config.getLoggerName());
+
+    var connectedHandler = new ChannelInboundHandlerAdapter() {
+      @Override
+      public void exceptionCaught(
+          ChannelHandlerContext channelContext,
+          Throwable cause
+      ) {
+
+        config.getLoggingContext().forEach(MDC::put);
+        try {
+          logger.debug(
+              "exceptionCaught() local={}, remote={}",
+              channelContext.channel().localAddress(),
+              channelContext.channel().remoteAddress(),
+              cause
+          );
+        } finally {
+          config.getLoggingContext().keySet().forEach(MDC::remove);
+        }
+
+        // Close whatever the FSM's state: the FSM is done with this channel or is about to be,
+        // and the event loop must not wait for the FSM's lock to check.
+        channelContext.close();
+      }
+
+      @Override
+      public void userEventTriggered(
+          ChannelHandlerContext channelContext,
+          Object evt
+      ) throws Exception {
+
+        if (evt instanceof IdleStateEvent) {
+          IdleState idleState = ((IdleStateEvent) evt).state();
+
+          if (idleState == IdleState.READER_IDLE) {
+            config.getLoggingContext().forEach(MDC::put);
+            try {
+              logger.debug("channel idle, maxIdleSeconds={}", config.getMaxIdleSeconds());
+            } finally {
+              config.getLoggingContext().keySet().forEach(MDC::remove);
+            }
+
+            ctx.fireEvent(new Event.ChannelIdle(cf));
+          }
+        }
+
+        super.userEventTriggered(channelContext, evt);
+      }
+    };
+
+    try {
+      if (config.getMaxIdleSeconds() > 0) {
+        channel.pipeline().addFirst(new IdleStateHandler(config.getMaxIdleSeconds(), 0, 0));
+      }
+      channel.pipeline().addLast(connectedHandler);
+    } catch (RuntimeException e) {
+      // e.g. the channel's event loop has shut down. Connect anyway; the FSM still needs to see
+      // the channel so that Disconnect can close it.
+      config.getLoggingContext().forEach(MDC::put);
+      try {
+        logger.warn("failed to add handlers to channel {}", channel, e);
+      } finally {
+        config.getLoggingContext().keySet().forEach(MDC::remove);
+      }
+    }
   }
 
   private static void disconnect(
