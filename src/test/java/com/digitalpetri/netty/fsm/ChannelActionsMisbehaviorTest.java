@@ -12,13 +12,17 @@ package com.digitalpetri.netty.fsm;
 
 import static com.digitalpetri.netty.fsm.FsmTestSupport.stepConfig;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.digitalpetri.fsm.FsmContext;
 import io.netty.channel.Channel;
+import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.timeout.IdleStateEvent;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -35,9 +39,12 @@ class ChannelActionsMisbehaviorTest {
 
   private final QueuedExecutor executor = new QueuedExecutor().captureFailures();
   private final ManualScheduler scheduler = new ManualScheduler();
+  private final List<EmbeddedChannel> channels = new ArrayList<>();
 
   @AfterEach
   void noExecutorTaskFailed() {
+    channels.forEach(EmbeddedChannel::finishAndReleaseAll);
+
     assertEquals(List.of(), executor.failures(), "executor tasks that threw");
   }
 
@@ -125,10 +132,62 @@ class ChannelActionsMisbehaviorTest {
     assertEquals(State.ReconnectWait, fsm.getState());
   }
 
+  @Test
+  @DisplayName("ChannelActions.keepAlive that throws counts as a keep-alive failure")
+  void keepAliveThatThrows() {
+    var actions = new RecordingChannelActions() {
+      @Override
+      public CompletableFuture<Void> keepAlive(FsmContext<State, Event> ctx, Channel channel) {
+        throw new IllegalStateException("keep-alive request could not be encoded");
+      }
+    };
+
+    assertKeepAliveFailed(actions);
+  }
+
+  @Test
+  @DisplayName("ChannelActions.keepAlive that returns null counts as a keep-alive failure")
+  void keepAliveThatReturnsNull() {
+    var actions = new RecordingChannelActions() {
+      @Override
+      public CompletableFuture<Void> keepAlive(FsmContext<State, Event> ctx, Channel channel) {
+        return null;
+      }
+    };
+
+    assertKeepAliveFailed(actions);
+  }
+
+  private void assertKeepAliveFailed(RecordingChannelActions actions) {
+    ChannelFsmConfig config = stepConfig(executor, scheduler, actions)
+        .setMaxIdleSeconds(15)
+        .build();
+    ChannelFsm fsm = new ChannelFsmFactory(config).newChannelFsm();
+    EmbeddedChannel channel = newChannel();
+
+    fsm.connect();
+    executor.drain();
+    actions.lastConnect().complete(channel);
+    executor.drain();
+    assertEquals(State.Connected, fsm.getState());
+
+    channel.pipeline().fireUserEventTriggered(IdleStateEvent.FIRST_READER_IDLE_STATE_EVENT);
+    executor.drain();
+
+    assertEquals(State.ReconnectWait, fsm.getState());
+    assertFalse(channel.isOpen());
+  }
+
   private ChannelFsm newFsm(ChannelActions actions) {
     ChannelFsmConfig config = stepConfig(executor, scheduler, actions).build();
 
     return new ChannelFsmFactory(config).newChannelFsm();
+  }
+
+  private EmbeddedChannel newChannel() {
+    var channel = new EmbeddedChannel();
+    channels.add(channel);
+    return channel;
   }
 
   private static void assertConnectFailed(

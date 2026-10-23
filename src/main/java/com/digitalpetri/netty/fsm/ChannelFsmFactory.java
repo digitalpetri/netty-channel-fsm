@@ -285,8 +285,17 @@ public class ChannelFsmFactory {
           ConnectFuture cf = KEY_CF.get(ctx);
 
           cf.future.thenAcceptAsync(ch -> {
-            CompletableFuture<Void> keepAliveFuture =
-                config.getChannelActions().keepAlive(ctx, ch);
+            // A keepAlive() that throws or returns null has failed to check the channel.
+            CompletableFuture<Void> keepAliveFuture;
+            try {
+              keepAliveFuture = config.getChannelActions().keepAlive(ctx, ch);
+            } catch (Throwable t) {
+              keepAliveFuture = CompletableFuture.failedFuture(t);
+            }
+            if (keepAliveFuture == null) {
+              keepAliveFuture = CompletableFuture.failedFuture(
+                  new NullPointerException("ChannelActions.keepAlive returned null"));
+            }
 
             keepAliveFuture.whenComplete((v, ex) -> {
               if (ex != null) {
