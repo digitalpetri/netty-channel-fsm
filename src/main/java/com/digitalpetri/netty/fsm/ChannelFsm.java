@@ -23,6 +23,9 @@ import io.netty.channel.Channel;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 public class ChannelFsm {
 
@@ -30,14 +33,25 @@ public class ChannelFsm {
 
   private final Fsm<State, Event> fsm;
 
-  ChannelFsm(FsmBuilder<State, Event> builder, State initialState) {
+  ChannelFsm(FsmBuilder<State, Event> builder, State initialState, ChannelFsmConfig config) {
+    Logger logger = LoggerFactory.getLogger(config.getLoggerName());
+
     builder.addTransitionAction(new TransitionAction<State, Event>() {
       @Override
       public void execute(ActionContext<State, Event> context) {
-        transitionListeners.forEach(
-            listener ->
-                listener.onStateTransition(context.from(), context.to(), context.event())
-        );
+        // One listener that throws must not keep the transition from the others.
+        for (TransitionListener listener : transitionListeners) {
+          try {
+            listener.onStateTransition(context.from(), context.to(), context.event());
+          } catch (Throwable t) {
+            config.getLoggingContext().forEach(MDC::put);
+            try {
+              logger.warn("TransitionListener threw: {}", listener, t);
+            } finally {
+              config.getLoggingContext().keySet().forEach(MDC::remove);
+            }
+          }
+        }
       }
 
       @Override

@@ -63,7 +63,7 @@ public class ChannelFsmFactory {
 
     configureChannelFsm(builder, config);
 
-    return new ChannelFsm(builder, initialState);
+    return new ChannelFsm(builder, initialState, config);
   }
 
   /**
