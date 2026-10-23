@@ -69,6 +69,12 @@ public interface ChannelFsmConfig {
   /**
    * Get the {@link Executor} to use.
    *
+   * <p>The FSM evaluates events, calls {@link ChannelActions}, and completes the futures it
+   * returns on this executor. The executor must run each task on a thread other than the one
+   * calling {@code execute}, and must not reject tasks while the FSM is in use. A direct executor,
+   * a {@code CallerRunsPolicy}, or a rejected task can stop the FSM from evaluating any further
+   * events.
+   *
    * @return the {@link Executor} to use.
    */
   Executor getExecutor();
