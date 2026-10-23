@@ -14,11 +14,13 @@ import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_CF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_DF;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RD;
 import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RDF;
+import static com.digitalpetri.netty.fsm.ChannelFsm.KEY_RS;
 import static com.digitalpetri.netty.fsm.CompletionBuilders.completeAsync;
 
 import com.digitalpetri.fsm.FsmContext;
 import com.digitalpetri.fsm.dsl.ActionContext;
 import com.digitalpetri.fsm.dsl.FsmBuilder;
+import com.digitalpetri.fsm.dsl.Transition;
 import com.digitalpetri.netty.fsm.ChannelFsm.ConnectFuture;
 import com.digitalpetri.netty.fsm.ChannelFsm.DisconnectFuture;
 import com.digitalpetri.netty.fsm.Scheduler.Cancellable;
@@ -61,7 +63,7 @@ public class ChannelFsmFactory {
 
     configureChannelFsm(builder, config);
 
-    return new ChannelFsm(builder, initialState);
+    return new ChannelFsm(builder, initialState, config);
   }
 
   /**
@@ -176,22 +178,36 @@ public class ChannelFsmFactory {
           connect(ctx, config);
         });
 
+    // Disconnect waits for the connect attempt to end. Requests made after it wait too, so they
+    // take effect in the order they were made.
     fb.onInternalTransition(State.Connecting)
         .via(Event.Connect.class)
-        .execute(ctx -> handleConnectEvent(ctx, config));
+        .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+          } else {
+            handleConnectEvent(ctx, config);
+          }
+        });
 
     fb.onInternalTransition(State.Connecting)
         .via(Event.GetChannel.class)
-        .execute(ctx -> handleGetChannelEvent(ctx, config));
+        .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+          } else {
+            handleGetChannelEvent(ctx, config);
+          }
+        });
 
     fb.onInternalTransition(State.Connecting)
         .via(Event.Disconnect.class)
-        .execute(ctx -> ctx.shelveEvent(ctx.event()));
+        .execute(ChannelFsmFactory::shelveRequest);
 
     fb.onTransitionFrom(State.Connecting)
         .to(s -> s != State.Connecting)
         .viaAny()
-        .execute(FsmContext::processShelvedEvents);
+        .execute(ChannelFsmFactory::processShelvedRequests);
 
     fb.onTransitionFrom(State.Connecting)
         .to(s -> s != State.Connecting)
@@ -210,19 +226,23 @@ public class ChannelFsmFactory {
         .on(Event.Disconnect.class)
         .transitionTo(State.Disconnecting);
 
-    if (config.isLazy()) {
-      fb.when(State.Connected)
-          .on(e ->
-              e.getClass() == Event.ChannelInactive.class
-                  || e.getClass() == Event.KeepAliveFailure.class)
-          .transitionTo(State.Idle);
-    } else {
-      fb.when(State.Connected)
-          .on(e ->
-              e.getClass() == Event.ChannelInactive.class
-                  || e.getClass() == Event.KeepAliveFailure.class)
-          .transitionTo(State.ReconnectWait);
-    }
+    // A channel's close or keep-alive failure can arrive after the FSM has left that connection
+    // and connected another one, e.g. when SslHandler holds the close until close_notify is
+    // flushed, or when a keep-alive request times out. Such an event only ends the connection it
+    // came from, which is checked when the event is evaluated.
+    State connectionLostTarget = config.isLazy() ? State.Idle : State.ReconnectWait;
+
+    fb.addTransition(new Transition<>() {
+      @Override
+      public State target() {
+        return connectionLostTarget;
+      }
+
+      @Override
+      public boolean matches(FsmContext<State, Event> ctx, State state, Event event) {
+        return state == State.Connected && isConnectionLost(ctx, event);
+      }
+    });
 
     fb.onTransitionTo(State.Connected)
         .from(s -> s != State.Connected)
@@ -230,85 +250,31 @@ public class ChannelFsmFactory {
         .execute(ctx -> {
           Event.ConnectSuccess event = (Event.ConnectSuccess) ctx.event();
           Channel channel = event.channel;
+          ConnectFuture cf = KEY_CF.get(ctx);
 
-          if (config.getMaxIdleSeconds() > 0) {
-            channel.pipeline()
-                .addFirst(new IdleStateHandler(config.getMaxIdleSeconds(), 0, 0));
-          }
-
-          channel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
-            @Override
-            public void channelInactive(
-                ChannelHandlerContext channelContext
-            ) throws Exception {
-
-              config.getLoggingContext().forEach(MDC::put);
-              try {
-                logger.debug(
-                    "channelInactive() local={}, remote={}",
-                    channelContext.channel().localAddress(),
-                    channelContext.channel().remoteAddress()
-                );
-              } finally {
-                config.getLoggingContext().keySet().forEach(MDC::remove);
-              }
-
-              if (ctx.currentState() == State.Connected) {
-                ctx.fireEvent(new Event.ChannelInactive());
-              }
-
-              super.channelInactive(channelContext);
+          // The channel can close before this action runs: the event loop may process the peer's
+          // FIN, delivered together with the last handshake message, before the executor gets to
+          // ConnectSuccess. A handler added after that never sees channelInactive, but a
+          // closeFuture listener is notified even when it's added after the close.
+          //
+          // The listener runs on the event loop, which must not wait for the FSM's lock, so it
+          // doesn't check the FSM's state. The FSM ignores the event unless it's still connected
+          // with this channel.
+          channel.closeFuture().addListener(future -> {
+            config.getLoggingContext().forEach(MDC::put);
+            try {
+              logger.debug(
+                  "channel closed, local={}, remote={}",
+                  channel.localAddress(),
+                  channel.remoteAddress()
+              );
+            } finally {
+              config.getLoggingContext().keySet().forEach(MDC::remove);
             }
 
-            @Override
-            public void exceptionCaught(
-                ChannelHandlerContext channelContext,
-                Throwable cause
-            ) {
-
-              config.getLoggingContext().forEach(MDC::put);
-              try {
-                logger.debug(
-                    "exceptionCaught() local={}, remote={}",
-                    channelContext.channel().localAddress(),
-                    channelContext.channel().remoteAddress(),
-                    cause
-                );
-              } finally {
-                config.getLoggingContext().keySet().forEach(MDC::remove);
-              }
-
-              if (ctx.currentState() == State.Connected) {
-                channelContext.close();
-              }
-            }
-
-            @Override
-            public void userEventTriggered(
-                ChannelHandlerContext channelContext,
-                Object evt
-            ) throws Exception {
-
-              if (evt instanceof IdleStateEvent) {
-                IdleState idleState = ((IdleStateEvent) evt).state();
-
-                if (idleState == IdleState.READER_IDLE) {
-                  config.getLoggingContext().forEach(MDC::put);
-                  try {
-                    logger.debug("channel idle, maxIdleSeconds={}", config.getMaxIdleSeconds());
-                  } finally {
-                    config.getLoggingContext().keySet().forEach(MDC::remove);
-                  }
-
-                  ctx.fireEvent(new Event.ChannelIdle());
-                }
-              }
-
-              super.userEventTriggered(channelContext, evt);
-            }
+            ctx.fireEvent(new Event.ChannelInactive(cf));
           });
 
-          ConnectFuture cf = KEY_CF.get(ctx);
           if (cf != null) {
             config.getExecutor().execute(() -> cf.future.complete(channel));
           }
@@ -325,15 +291,30 @@ public class ChannelFsmFactory {
     fb.onInternalTransition(State.Connected)
         .via(Event.ChannelIdle.class)
         .execute(ctx -> {
+          // A channel the FSM has left behind can still go idle, e.g. while its close is held.
+          Event.ChannelIdle event = (Event.ChannelIdle) ctx.event();
+          if (!isCurrent(ctx, event.connectFuture)) {
+            return;
+          }
+
           ConnectFuture cf = KEY_CF.get(ctx);
 
           cf.future.thenAcceptAsync(ch -> {
-            CompletableFuture<Void> keepAliveFuture =
-                config.getChannelActions().keepAlive(ctx, ch);
+            // A keepAlive() that throws or returns null has failed to check the channel.
+            CompletableFuture<Void> keepAliveFuture;
+            try {
+              keepAliveFuture = config.getChannelActions().keepAlive(ctx, ch);
+            } catch (Throwable t) {
+              keepAliveFuture = CompletableFuture.failedFuture(t);
+            }
+            if (keepAliveFuture == null) {
+              keepAliveFuture = CompletableFuture.failedFuture(
+                  new NullPointerException("ChannelActions.keepAlive returned null"));
+            }
 
             keepAliveFuture.whenComplete((v, ex) -> {
               if (ex != null) {
-                ctx.fireEvent(new Event.KeepAliveFailure(ex));
+                ctx.fireEvent(new Event.KeepAliveFailure(ex, cf));
               }
             });
           }, config.getExecutor());
@@ -372,13 +353,20 @@ public class ChannelFsmFactory {
           disconnect(ctx, config);
         });
 
+    // Connect and GetChannel wait for the disconnect to finish. A Disconnect made after one of
+    // them waits too, so it takes effect after it, in the order the requests were made.
     fb.onInternalTransition(State.Disconnecting)
         .via(e -> e.getClass() == Event.Connect.class || e.getClass() == Event.GetChannel.class)
-        .execute(ctx -> ctx.shelveEvent(ctx.event()));
+        .execute(ChannelFsmFactory::shelveRequest);
 
     fb.onInternalTransition(State.Disconnecting)
         .via(Event.Disconnect.class)
         .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+            return;
+          }
+
           DisconnectFuture df = KEY_DF.get(ctx);
 
           if (df != null) {
@@ -402,7 +390,7 @@ public class ChannelFsmFactory {
     fb.onTransitionFrom(State.Disconnecting)
         .to(s -> s != State.Disconnecting)
         .viaAny()
-        .execute(FsmContext::processShelvedEvents);
+        .execute(ChannelFsmFactory::processShelvedRequests);
   }
 
   private static void configureReconnectWaitState(
@@ -410,9 +398,23 @@ public class ChannelFsmFactory {
       ChannelFsmConfig config
   ) {
 
-    fb.when(State.ReconnectWait)
-        .on(Event.ReconnectDelayElapsed.class)
-        .transitionTo(State.Reconnecting);
+    final Logger logger = LoggerFactory.getLogger(config.getLoggerName());
+
+    // ScheduledFuture.cancel(false) can't stop a timer that has already started, so a timer from
+    // an earlier wait can fire during this one. Its event only ends the wait that scheduled it.
+    fb.addTransition(new Transition<>() {
+      @Override
+      public State target() {
+        return State.Reconnecting;
+      }
+
+      @Override
+      public boolean matches(FsmContext<State, Event> ctx, State state, Event event) {
+        return state == State.ReconnectWait
+            && event.getClass() == Event.ReconnectDelayElapsed.class
+            && isCurrent(ctx, ((Event.ReconnectDelayElapsed) event).connectFuture);
+      }
+    });
 
     fb.when(State.ReconnectWait)
         .on(Event.Disconnect.class)
@@ -429,7 +431,9 @@ public class ChannelFsmFactory {
         .from(s -> s != State.ReconnectWait)
         .viaAny()
         .execute(ctx -> {
-          KEY_CF.set(ctx, new ConnectFuture());
+          // The ConnectFuture for the next attempt also identifies this wait.
+          ConnectFuture cf = new ConnectFuture();
+          KEY_CF.set(ctx, cf);
 
           Long delay = KEY_RD.get(ctx);
           if (delay == null) {
@@ -439,12 +443,27 @@ public class ChannelFsmFactory {
           }
           KEY_RD.set(ctx, delay);
 
-          Cancellable reconnectDelayFuture = config.getScheduler().schedule(
-              () ->
-                  ctx.fireEvent(new Event.ReconnectDelayElapsed()),
-              delay,
-              TimeUnit.SECONDS
-          );
+          Cancellable reconnectDelayFuture;
+          try {
+            reconnectDelayFuture = config.getScheduler().schedule(
+                () ->
+                    ctx.fireEvent(new Event.ReconnectDelayElapsed(cf)),
+                delay,
+                TimeUnit.SECONDS
+            );
+          } catch (RuntimeException e) {
+            // Nothing would end this wait, and every getChannel() would wait for it. Give up
+            // instead; reconnecting right away would retry without any delay.
+            config.getLoggingContext().forEach(MDC::put);
+            try {
+              logger.warn("failed to schedule reconnect, disconnecting", e);
+            } finally {
+              config.getLoggingContext().keySet().forEach(MDC::remove);
+            }
+
+            ctx.fireEvent(new Event.Disconnect());
+            return;
+          }
 
           KEY_RDF.set(ctx, reconnectDelayFuture);
         });
@@ -530,22 +549,36 @@ public class ChannelFsmFactory {
           connect(ctx, config);
         });
 
+    // Disconnect waits for the connect attempt to end. Requests made after it wait too, so they
+    // take effect in the order they were made.
     fb.onInternalTransition(State.Reconnecting)
         .via(Event.Connect.class)
-        .execute(ctx -> handleConnectEvent(ctx, config));
+        .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+          } else {
+            handleConnectEvent(ctx, config);
+          }
+        });
 
     fb.onInternalTransition(State.Reconnecting)
         .via(Event.GetChannel.class)
-        .execute(ctx -> handleGetChannelEvent(ctx, config));
+        .execute(ctx -> {
+          if (isRequestShelved(ctx)) {
+            shelveRequest(ctx);
+          } else {
+            handleGetChannelEvent(ctx, config);
+          }
+        });
 
     fb.onInternalTransition(State.Reconnecting)
         .via(Event.Disconnect.class)
-        .execute(ctx -> ctx.shelveEvent(ctx.event()));
+        .execute(ChannelFsmFactory::shelveRequest);
 
     fb.onTransitionFrom(State.Reconnecting)
         .to(s -> s != State.Reconnecting)
         .viaAny()
-        .execute(FsmContext::processShelvedEvents);
+        .execute(ChannelFsmFactory::processShelvedRequests);
 
     fb.onTransitionFrom(State.Reconnecting)
         .to(State.Connected)
@@ -561,15 +594,124 @@ public class ChannelFsmFactory {
       ChannelFsmConfig config
   ) {
 
-    config.getExecutor().execute(() ->
-        config.getChannelActions().connect(ctx).whenComplete((channel, ex) -> {
-          if (channel != null) {
-            ctx.fireEvent(new Event.ConnectSuccess(channel));
-          } else {
-            ctx.fireEvent(new Event.ConnectFailure(ex));
+    // The ConnectFuture of the connection this attempt is for.
+    ConnectFuture cf = KEY_CF.get(ctx);
+
+    config.getExecutor().execute(() -> {
+      // Only ConnectSuccess or ConnectFailure ends a connect attempt, and Disconnect waits for
+      // the attempt to end, so turn a connect() that throws or returns null into a failure.
+      CompletableFuture<Channel> connectFuture;
+      try {
+        connectFuture = config.getChannelActions().connect(ctx);
+      } catch (Throwable t) {
+        connectFuture = CompletableFuture.failedFuture(t);
+      }
+      if (connectFuture == null) {
+        connectFuture = CompletableFuture.failedFuture(
+            new NullPointerException("ChannelActions.connect returned null"));
+      }
+
+      connectFuture.whenComplete((channel, ex) -> {
+        if (channel != null) {
+          addHandlers(ctx, config, channel, cf);
+
+          ctx.fireEvent(new Event.ConnectSuccess(channel));
+        } else if (ex != null) {
+          ctx.fireEvent(new Event.ConnectFailure(ex));
+        } else {
+          ctx.fireEvent(new Event.ConnectFailure(
+              new IllegalStateException("ChannelActions.connect completed without a Channel")));
+        }
+      });
+    });
+  }
+
+  /**
+   * Add the FSM's handlers to a newly connected channel.
+   *
+   * <p>This runs before ConnectSuccess is fired, so the handlers are in place by the time the FSM
+   * is Connected, and outside the FSM's lock: DefaultChannelPipeline.destroy() calls
+   * handlerRemoved while it holds the pipeline's lock, and a handler that calls into the FSM there
+   * would deadlock with an FSM action that waits for the pipeline's lock.
+   *
+   * @param ctx the {@link ActionContext}.
+   * @param config the {@link ChannelFsmConfig}.
+   * @param channel the newly connected {@link Channel}.
+   * @param cf the {@link ConnectFuture} of the connection {@code channel} is for.
+   */
+  private static void addHandlers(
+      ActionContext<State, Event> ctx,
+      ChannelFsmConfig config,
+      Channel channel,
+      ConnectFuture cf
+  ) {
+
+    Logger logger = LoggerFactory.getLogger(config.getLoggerName());
+
+    var connectedHandler = new ChannelInboundHandlerAdapter() {
+      @Override
+      public void exceptionCaught(
+          ChannelHandlerContext channelContext,
+          Throwable cause
+      ) {
+
+        config.getLoggingContext().forEach(MDC::put);
+        try {
+          logger.debug(
+              "exceptionCaught() local={}, remote={}",
+              channelContext.channel().localAddress(),
+              channelContext.channel().remoteAddress(),
+              cause
+          );
+        } finally {
+          config.getLoggingContext().keySet().forEach(MDC::remove);
+        }
+
+        // Close whatever the FSM's state: the FSM is done with this channel or is about to be,
+        // and the event loop must not wait for the FSM's lock to check.
+        channelContext.close();
+      }
+
+      @Override
+      public void userEventTriggered(
+          ChannelHandlerContext channelContext,
+          Object evt
+      ) throws Exception {
+
+        if (evt instanceof IdleStateEvent) {
+          IdleState idleState = ((IdleStateEvent) evt).state();
+
+          if (idleState == IdleState.READER_IDLE) {
+            config.getLoggingContext().forEach(MDC::put);
+            try {
+              logger.debug("channel idle, maxIdleSeconds={}", config.getMaxIdleSeconds());
+            } finally {
+              config.getLoggingContext().keySet().forEach(MDC::remove);
+            }
+
+            ctx.fireEvent(new Event.ChannelIdle(cf));
           }
-        })
-    );
+        }
+
+        super.userEventTriggered(channelContext, evt);
+      }
+    };
+
+    try {
+      if (config.getMaxIdleSeconds() > 0) {
+        channel.pipeline().addFirst(new IdleStateHandler(config.getMaxIdleSeconds(), 0, 0));
+      }
+      channel.pipeline().addLast(connectedHandler);
+    } catch (RuntimeException e) {
+      // e.g. the channel's event loop has shut down. Connect anyway; the FSM still needs to see
+      // the channel so that Disconnect can close it.
+      config.getLoggingContext().forEach(MDC::put);
+      try {
+        logger.warn("failed to add handlers to channel {}", channel, e);
+      } finally {
+        config.getLoggingContext().keySet().forEach(MDC::remove);
+      }
+    }
   }
 
   private static void disconnect(
@@ -587,10 +729,70 @@ public class ChannelFsmFactory {
               channel -> config.getChannelActions().disconnect(ctx, channel),
               config.getExecutor()
           )
-          .whenComplete((v, ex) -> ctx.fireEvent(new Event.DisconnectSuccess()));
+          .whenComplete((v, ex) -> {
+            // The FSM is done with the channel even if the disconnect action failed before it
+            // closed the channel. Closing a closed channel does nothing.
+            connectFuture.future.thenAccept(Channel::close);
+
+            ctx.fireEvent(new Event.DisconnectSuccess());
+          });
     } else {
       ctx.fireEvent(new Event.DisconnectSuccess());
     }
+  }
+
+  /**
+   * Check whether {@code event} ends the current connection: a ChannelInactive or
+   * KeepAliveFailure from the current connection, or one that doesn't name a connection.
+   *
+   * @param ctx the {@link FsmContext}.
+   * @param event the event being evaluated.
+   * @return {@code true} if {@code event} ends the current connection.
+   */
+  private static boolean isConnectionLost(FsmContext<State, Event> ctx, Event event) {
+    ConnectFuture source;
+
+    if (event.getClass() == Event.ChannelInactive.class) {
+      source = ((Event.ChannelInactive) event).connectFuture;
+    } else if (event.getClass() == Event.KeepAliveFailure.class) {
+      source = ((Event.KeepAliveFailure) event).connectFuture;
+    } else {
+      return false;
+    }
+
+    return isCurrent(ctx, source);
+  }
+
+  /**
+   * Check whether an event that names the ConnectFuture it came from belongs to the current
+   * connection or wait. An event that names none, e.g. one fired at the FSM directly, does.
+   *
+   * @param ctx the {@link FsmContext}.
+   * @param source the ConnectFuture the event came from, or {@code null}.
+   * @return {@code true} if the event belongs to the current connection or wait.
+   */
+  private static boolean isCurrent(FsmContext<State, Event> ctx, ConnectFuture source) {
+    return source == null || source == KEY_CF.get(ctx);
+  }
+
+  /**
+   * Shelve the request being evaluated, a Connect, GetChannel, or Disconnect, until the current
+   * state ends, and note that requests made after it must be shelved too.
+   *
+   * @param ctx the {@link ActionContext}.
+   */
+  private static void shelveRequest(ActionContext<State, Event> ctx) {
+    KEY_RS.set(ctx, Boolean.TRUE);
+    ctx.shelveEvent(ctx.event());
+  }
+
+  private static boolean isRequestShelved(FsmContext<State, Event> ctx) {
+    return KEY_RS.get(ctx) != null;
+  }
+
+  private static void processShelvedRequests(FsmContext<State, Event> ctx) {
+    KEY_RS.remove(ctx);
+    ctx.processShelvedEvents();
   }
 
   private static void handleConnectEvent(
@@ -631,14 +833,15 @@ public class ChannelFsmFactory {
     }
   }
 
-  private static int getMaxReconnectDelay(ChannelFsmConfig config) {
+  private static long getMaxReconnectDelay(ChannelFsmConfig config) {
     int maxReconnectDelay = config.getMaxReconnectDelaySeconds();
 
     if (maxReconnectDelay < 1) {
       maxReconnectDelay = ChannelFsmConfigBuilder.DEFAULT_MAX_RECONNECT_DELAY_SECONDS;
     }
 
-    int highestOneBit = Integer.highestOneBit(maxReconnectDelay);
+    // long, so rounding a value above 2^30 up to 2^31 doesn't overflow
+    long highestOneBit = Integer.highestOneBit(maxReconnectDelay);
 
     if (maxReconnectDelay == highestOneBit) {
       return maxReconnectDelay;
