@@ -158,6 +158,65 @@ class ChannelActionsMisbehaviorTest {
     assertKeepAliveFailed(actions);
   }
 
+  // e.g. Milo's disconnect() schedules a timeout on a HashedWheelTimer, which throws once the
+  // timer has been stopped.
+  @Test
+  @DisplayName("ChannelActions.disconnect that throws still closes the channel")
+  void disconnectThatThrows() {
+    var actions = new RecordingChannelActions() {
+      @Override
+      public CompletableFuture<Void> disconnect(FsmContext<State, Event> ctx, Channel channel) {
+        throw new IllegalStateException("cannot be started once stopped");
+      }
+    };
+
+    assertDisconnectClosedChannel(actions);
+  }
+
+  @Test
+  @DisplayName("ChannelActions.disconnect that returns null still closes the channel")
+  void disconnectThatReturnsNull() {
+    var actions = new RecordingChannelActions() {
+      @Override
+      public CompletableFuture<Void> disconnect(FsmContext<State, Event> ctx, Channel channel) {
+        return null;
+      }
+    };
+
+    assertDisconnectClosedChannel(actions);
+  }
+
+  @Test
+  @DisplayName("ChannelActions.disconnect that fails before closing still closes the channel")
+  void disconnectThatFailsBeforeClosing() {
+    var actions = new RecordingChannelActions() {
+      @Override
+      public CompletableFuture<Void> disconnect(FsmContext<State, Event> ctx, Channel channel) {
+        return CompletableFuture.failedFuture(new Exception("close request failed"));
+      }
+    };
+
+    assertDisconnectClosedChannel(actions);
+  }
+
+  private void assertDisconnectClosedChannel(RecordingChannelActions actions) {
+    ChannelFsm fsm = newFsm(actions);
+    EmbeddedChannel channel = newChannel();
+
+    fsm.connect();
+    executor.drain();
+    actions.lastConnect().complete(channel);
+    executor.drain();
+    assertEquals(State.Connected, fsm.getState());
+
+    CompletableFuture<Void> disconnected = fsm.disconnect();
+    executor.drain();
+
+    assertTrue(disconnected.isDone());
+    assertEquals(State.NotConnected, fsm.getState());
+    assertFalse(channel.isOpen(), "the FSM is done with the channel, so it must be closed");
+  }
+
   private void assertKeepAliveFailed(RecordingChannelActions actions) {
     ChannelFsmConfig config = stepConfig(executor, scheduler, actions)
         .setMaxIdleSeconds(15)

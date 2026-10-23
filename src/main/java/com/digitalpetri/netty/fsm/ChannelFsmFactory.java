@@ -662,7 +662,13 @@ public class ChannelFsmFactory {
               channel -> config.getChannelActions().disconnect(ctx, channel),
               config.getExecutor()
           )
-          .whenComplete((v, ex) -> ctx.fireEvent(new Event.DisconnectSuccess()));
+          .whenComplete((v, ex) -> {
+            // The FSM is done with the channel even if the disconnect action failed before it
+            // closed the channel. Closing a closed channel does nothing.
+            connectFuture.future.thenAccept(Channel::close);
+
+            ctx.fireEvent(new Event.DisconnectSuccess());
+          });
     } else {
       ctx.fireEvent(new Event.DisconnectSuccess());
     }
