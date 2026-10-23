@@ -54,6 +54,30 @@ final class FsmTestSupport {
     return new FactoryBuilder();
   }
 
+  /**
+   * Start a config for an FSM that the test drives step by step: not lazy, persistent, keep alive
+   * disabled.
+   *
+   * @param executor the {@link QueuedExecutor} the test runs tasks on.
+   * @param scheduler the {@link Scheduler}, usually a {@link ManualScheduler}.
+   * @param actions the {@link ChannelActions}.
+   * @return a {@link ChannelFsmConfigBuilder} the test can adjust further.
+   */
+  static ChannelFsmConfigBuilder stepConfig(
+      QueuedExecutor executor,
+      Scheduler scheduler,
+      ChannelActions actions
+  ) {
+
+    return ChannelFsmConfig.newBuilder()
+        .setExecutor(executor)
+        .setScheduler(scheduler)
+        .setChannelActions(actions)
+        .setLazy(false)
+        .setPersistent(true)
+        .setMaxIdleSeconds(0);
+  }
+
   static ConnectProxy connectDelegate(boolean success) {
     return ctx -> success
         ? CompletableFuture.completedFuture(new EmbeddedChannel())
